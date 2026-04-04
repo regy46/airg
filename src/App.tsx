@@ -233,7 +233,7 @@ export default function App() {
     } catch (err: any) {
       if (err.name === 'AbortError') return;
       console.error('Gemini Error:', err);
-      setError('Terjadi kesalahan koneksi. Pastikan API Key sudah benar.');
+      setError(err.message || 'Terjadi kesalahan koneksi. Pastikan koneksi internet lo aman.');
     } finally {
       if (!currentAbortController.signal.aborted) {
         setIsLoading(false);
