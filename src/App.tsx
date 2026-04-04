@@ -8,8 +8,22 @@ import { Send, Bot, User, Loader2, Sparkles, Trash2, Copy, Check, Mic, MicOff, V
 import { motion, AnimatePresence } from 'motion/react';
 import { GoogleGenAI } from '@google/genai';
 
-// Initialize Gemini
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY as string });
+// Initialize Gemini with support for both AI Studio and Vercel/Vite environments
+const getApiKey = () => {
+  // In Vite/Vercel, we use import.meta.env.VITE_
+  const viteKey = (import.meta as any).env?.VITE_GEMINI_API_KEY;
+  // In AI Studio preview, we use process.env
+  let processKey = undefined;
+  try {
+    processKey = (window as any).process?.env?.GEMINI_API_KEY || (process as any)?.env?.GEMINI_API_KEY;
+  } catch (e) {
+    // process is not defined in some browser environments
+  }
+  
+  return viteKey || processKey || '';
+};
+
+const ai = new GoogleGenAI({ apiKey: getApiKey() });
 
 interface Message {
   role: 'user' | 'model';
@@ -195,6 +209,11 @@ export default function App() {
     setError(null);
 
     try {
+      const apiKey = getApiKey();
+      if (!apiKey || apiKey === 'undefined' || apiKey === '') {
+        throw new Error('API Key Gemini belum diset. Kalo lo di Vercel, tambahin VITE_GEMINI_API_KEY di Environment Variables.');
+      }
+
       const history = messages.map(msg => ({
         role: msg.role,
         parts: [{ text: msg.content }]
