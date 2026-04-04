@@ -6,6 +6,10 @@
 import { useState, useRef, useEffect } from 'react';
 import { Send, Bot, User, Loader2, Sparkles, Trash2, Copy, Check, Mic, MicOff, Volume2, GraduationCap, Pause, Play, Square } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { GoogleGenAI } from '@google/genai';
+
+// Initialize Gemini
+const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY as string });
 
 interface Message {
   role: 'user' | 'model';
@@ -192,32 +196,29 @@ export default function App() {
 
     try {
       const history = messages.map(msg => ({
-        role: msg.role === 'user' ? 'user' : 'model',
+        role: msg.role,
         parts: [{ text: msg.content }]
       }));
 
-      const apiResponse = await fetch('/api/chat', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          message: messageText,
-          history: history,
-        }),
-        signal: currentAbortController.signal,
+      const response = await ai.models.generateContent({
+        model: "gemini-3-flash-preview",
+        contents: [...history, { role: 'user', parts: [{ text: messageText }] }],
+        config: {
+          systemInstruction: `Anda adalah AI R.G, asisten pendidikan super cerdas yang dirancang khusus untuk membantu murid-murid di kelas. 
+          Karakter Anda:
+          1. Sangat cerdas, berwawasan luas, namun ramah dan sabar.
+          2. Mampu menjelaskan konsep rumit (Sains, Matematika, Sejarah, dll.) dengan bahasa yang mudah dimengerti siswa.
+          3. Gunakan gaya bahasa "Bahasa Gaul Jakarta" yang sopan namun asik (seperti menggunakan kata "gue", "lo", "banget", "nih", "deh", "kok", dll.) agar terasa seperti teman belajar yang keren.
+          4. Selalu mendorong siswa untuk berpikir kritis, bukan sekadar memberi jawaban langsung.
+          5. Sangat ahli dalam Bahasa Indonesia dan memahami konteks budaya lokal.
+          6. Jika ada typo, Anda tetap mengerti maksud siswa dan memperbaikinya secara halus dalam penjelasan Anda.
+          7. Gunakan analogi yang menarik untuk menjelaskan materi pelajaran.`,
+        }
       });
 
-      if (!apiResponse.ok) {
-        const errorData = await apiResponse.json();
-        throw new Error(errorData.error || 'Gagal menghubungi server.');
-      }
-
-      const data = await apiResponse.json();
-      
       if (currentAbortController.signal.aborted) return;
 
-      const aiContent = data.text || 'Maaf, AI R.G tidak mendapatkan respon.';
+      const aiContent = response.text || 'Maaf, AI R.G tidak mendapatkan respon.';
       const aiMessage: Message = {
         role: 'model',
         content: aiContent,
@@ -233,7 +234,9 @@ export default function App() {
     } catch (err: any) {
       if (err.name === 'AbortError') return;
       console.error('Gemini Error:', err);
-      setError(err.message || 'Terjadi kesalahan koneksi. Pastikan koneksi internet lo aman.');
+      // Detailed error message for debugging
+      const errorMsg = err instanceof Error ? err.message : String(err);
+      setError(`Koneksi Gagal: ${errorMsg}. Coba refresh halaman atau cek API Key.`);
     } finally {
       if (!currentAbortController.signal.aborted) {
         setIsLoading(false);
