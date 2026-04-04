@@ -12,6 +12,8 @@ async function startServer() {
 
   app.use(express.json());
 
+  console.log(`Starting server in ${process.env.NODE_ENV || 'development'} mode`);
+
   // API Route for Gemini
   app.post("/api/chat", async (req, res) => {
     try {
