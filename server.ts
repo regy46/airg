@@ -21,9 +21,11 @@ async function startServer() {
       
       const apiKey = process.env.GEMINI_API_KEY;
       if (!apiKey) {
-        return res.status(500).json({ error: "GEMINI_API_KEY is not configured on the server." });
+        console.error("GEMINI_API_KEY is missing in environment variables.");
+        return res.status(500).json({ error: "API Key belum dikonfigurasi di server Vercel." });
       }
 
+      console.log("Attempting to call Gemini API...");
       const ai = new GoogleGenAI({ apiKey });
       
       const response = await ai.models.generateContent({
@@ -67,6 +69,8 @@ async function startServer() {
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`Server running on http://localhost:${PORT}`);
   });
+
+  return app;
 }
 
-startServer();
+export default startServer();
