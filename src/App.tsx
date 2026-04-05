@@ -7,10 +7,7 @@ import { useState, useRef, useEffect, ChangeEvent } from 'react';
 import { Send, Bot, User, Loader2, Sparkles, Trash2, Copy, Check, Mic, MicOff, Volume2, GraduationCap, Pause, Play, Square, VolumeX, Plus, X, MoreVertical, Search, MapPin, FileText, Upload, AlertCircle } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { GoogleGenAI, Modality, ThinkingLevel, Type } from '@google/genai';
-import * as pdfjs from 'pdfjs-dist';
-
-// Set worker for pdfjs
-pdfjs.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.min.mjs`;
+import * as pdfjsLib from 'pdfjs-dist';
 
 // Initialize Gemini with support for both AI Studio and Vercel/Vite environments
 const getApiKey = () => {
@@ -34,6 +31,305 @@ interface Message {
   content: string;
   timestamp: Date;
   image?: string;
+  groundingChunks?: any[];
+}
+
+interface QuizViewProps {
+  pdfContent: string | null;
+  pdfFileName: string | null;
+  setPdfContent: (content: string | null) => void;
+  setPdfFileName: (name: string | null) => void;
+  isExtractingPdf: boolean;
+  handleFileUpload: (e: ChangeEvent<HTMLInputElement>) => void;
+  setError: (error: string | null) => void;
+  setView: (view: 'chat' | 'quiz') => void;
+}
+
+function QuizView({ 
+  pdfContent, 
+  pdfFileName, 
+  setPdfContent, 
+  setPdfFileName, 
+  isExtractingPdf, 
+  handleFileUpload, 
+  setError,
+  setView
+}: QuizViewProps) {
+  const [quizTopic, setQuizTopic] = useState('');
+  const [questions, setQuestions] = useState<any[]>([]);
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const [score, setScore] = useState(0);
+  const [isFinished, setIsFinished] = useState(false);
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [selectedAnswer, setSelectedAnswer] = useState<number | null>(null);
+  const [showCorrection, setShowCorrection] = useState(false);
+
+  const generateQuiz = async () => {
+    const topic = quizTopic.trim() || pdfContent;
+    if (!topic) return;
+    setIsGenerating(true);
+    setQuestions([]);
+    setCurrentIndex(0);
+    setScore(0);
+    setIsFinished(false);
+
+    try {
+      const apiKey = getApiKey();
+      const ai = new GoogleGenAI({ apiKey });
+      const response = await ai.models.generateContent({
+        model: "gemini-3-flash-preview",
+        contents: pdfContent 
+          ? `Buatkan kuis pilihan ganda berdasarkan materi PDF berikut: \n\n${pdfContent}\n\nBerikan jumlah pertanyaan yang sesuai dengan kedalaman materi (antara 5 sampai 15 pertanyaan) yang menantang dan edukatif.`
+          : `Buatkan kuis pilihan ganda tentang materi: ${quizTopic}. Berikan 10 pertanyaan yang menantang dan edukatif.`,
+        config: {
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: Type.ARRAY,
+            items: {
+              type: Type.OBJECT,
+              properties: {
+                question: { type: Type.STRING },
+                options: {
+                  type: Type.ARRAY,
+                  items: { type: Type.STRING }
+                },
+                correctIndex: { type: Type.INTEGER },
+                explanation: { type: Type.STRING }
+              },
+              required: ["question", "options", "correctIndex", "explanation"]
+            }
+          }
+        }
+      });
+
+      const data = JSON.parse(response.text || '[]');
+      setQuestions(data);
+      // Clear PDF after generating quiz
+      setPdfContent(null);
+      setPdfFileName(null);
+    } catch (err) {
+      console.error(err);
+      setError("Gagal membuat kuis. Coba lagi ya!");
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  const handleAnswer = (idx: number) => {
+    if (showCorrection) return;
+    setSelectedAnswer(idx);
+    setShowCorrection(true);
+    if (idx === questions[currentIndex].correctIndex) {
+      setScore(prev => prev + 1);
+    }
+  };
+
+  const nextQuestion = () => {
+    setSelectedAnswer(null);
+    setShowCorrection(false);
+    if (currentIndex < questions.length - 1) {
+      setCurrentIndex(prev => prev + 1);
+    } else {
+      setIsFinished(true);
+    }
+  };
+
+  return (
+    <main className="flex-1 overflow-y-auto p-4 md:p-8 bg-slate-50 dark:bg-slate-950">
+      <div className="max-w-2xl mx-auto">
+        {!questions.length && !isGenerating && (
+          <motion.div 
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="bg-white dark:bg-slate-900 p-8 rounded-[2.5rem] shadow-xl border border-slate-100 dark:border-slate-800 text-center space-y-6"
+          >
+            <div className="w-20 h-20 bg-indigo-100 dark:bg-indigo-900/30 rounded-3xl flex items-center justify-center mx-auto">
+              <GraduationCap className="w-10 h-10 text-indigo-600 dark:text-indigo-400" />
+            </div>
+            <div className="space-y-2">
+              <h2 className="text-2xl font-black text-slate-800 dark:text-white">Mode Kuis AI R.G</h2>
+              <p className="text-slate-500 dark:text-slate-400 font-medium">Masukkan materi pelajaran yang mau kamu uji pemahamannya.</p>
+            </div>
+              <div className="space-y-4">
+                {pdfFileName ? (
+                  <div className="p-5 bg-indigo-50 dark:bg-indigo-900/20 border-2 border-indigo-500 border-dashed rounded-2xl flex items-center justify-between">
+                    <div className="flex items-center gap-3 overflow-hidden">
+                      <FileText className="w-6 h-6 text-indigo-600 flex-shrink-0" />
+                      <span className="text-sm font-bold text-slate-700 dark:text-slate-200 truncate">{pdfFileName}</span>
+                    </div>
+                    <button 
+                      onClick={() => { setPdfContent(null); setPdfFileName(null); }}
+                      className="p-1 hover:bg-indigo-100 dark:hover:bg-indigo-800 rounded-lg text-indigo-600"
+                    >
+                      <X className="w-5 h-5" />
+                    </button>
+                  </div>
+                ) : (
+                  <input 
+                    type="text" 
+                    value={quizTopic}
+                    onChange={(e) => setQuizTopic(e.target.value)}
+                    placeholder="Contoh: Fotosintesis, Sejarah Indonesia, Aljabar..."
+                    className="w-full p-5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all font-bold text-slate-800 dark:text-white"
+                  />
+                )}
+
+                <div className="flex gap-3">
+                  <label className="flex-1">
+                    <input 
+                      type="file" 
+                      accept="application/pdf" 
+                      className="hidden" 
+                      onChange={handleFileUpload}
+                    />
+                    <div className="w-full py-5 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-2 border-slate-200 dark:border-slate-700 rounded-2xl font-black uppercase tracking-widest flex items-center justify-center gap-3 cursor-pointer hover:border-indigo-500 hover:text-indigo-600 transition-all">
+                      <Upload className="w-5 h-5" />
+                      Upload PDF
+                    </div>
+                  </label>
+                  <button 
+                    onClick={generateQuiz}
+                    disabled={(!quizTopic.trim() && !pdfContent) || isExtractingPdf}
+                    className="flex-[2] py-5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-2xl font-black uppercase tracking-widest shadow-lg shadow-indigo-200 dark:shadow-none transition-all flex items-center justify-center gap-3"
+                  >
+                    {isExtractingPdf ? <Loader2 className="w-5 h-5 animate-spin" /> : <Sparkles className="w-5 h-5" />}
+                    Buat Kuis Sekarang
+                  </button>
+                </div>
+              </div>
+          </motion.div>
+        )}
+
+        {isGenerating && (
+          <div className="flex flex-col items-center justify-center h-64 space-y-4">
+            <Loader2 className="w-12 h-12 text-indigo-600 animate-spin" />
+            <p className="text-slate-500 dark:text-slate-400 font-black uppercase tracking-widest text-xs">AI R.G sedang meracik kuis untukmu...</p>
+          </div>
+        )}
+
+        {questions.length > 0 && !isFinished && (
+          <div className="space-y-6">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-black text-slate-400 uppercase tracking-widest">Pertanyaan {currentIndex + 1} dari {questions.length}</span>
+              <div className="h-2 w-32 bg-slate-200 dark:bg-slate-800 rounded-full overflow-hidden">
+                <div 
+                  className="h-full bg-indigo-600 transition-all duration-500" 
+                  style={{ width: `${((currentIndex + 1) / questions.length) * 100}%` }}
+                />
+              </div>
+            </div>
+
+            <motion.div 
+              key={currentIndex}
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              className="bg-white dark:bg-slate-900 p-8 rounded-[2.5rem] shadow-xl border border-slate-100 dark:border-slate-800 space-y-8"
+            >
+              <h3 className="text-xl md:text-2xl font-black text-slate-800 dark:text-white leading-tight">
+                {questions[currentIndex].question}
+              </h3>
+
+              <div className="grid grid-cols-1 gap-3">
+                {questions[currentIndex].options.map((opt: string, i: number) => {
+                  let btnClass = "bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300";
+                  if (showCorrection) {
+                    if (i === questions[currentIndex].correctIndex) {
+                      btnClass = "bg-green-50 dark:bg-green-900/20 border-green-500 text-green-700 dark:text-green-400";
+                    } else if (i === selectedAnswer) {
+                      btnClass = "bg-red-50 dark:bg-red-900/20 border-red-500 text-red-700 dark:text-red-400";
+                    }
+                  } else if (selectedAnswer === i) {
+                    btnClass = "bg-indigo-50 dark:bg-indigo-900/20 border-indigo-500 text-indigo-700 dark:text-indigo-400";
+                  }
+
+                  return (
+                    <button
+                      key={i}
+                      onClick={() => handleAnswer(i)}
+                      disabled={showCorrection}
+                      className={`p-5 text-left rounded-2xl border-2 font-bold transition-all flex items-center justify-between gap-4 ${btnClass}`}
+                    >
+                      <div className="flex items-center gap-4">
+                        <span className="w-8 h-8 rounded-lg bg-white dark:bg-slate-700 flex items-center justify-center text-xs shadow-sm border border-slate-100 dark:border-slate-600">
+                          {String.fromCharCode(65 + i)}
+                        </span>
+                        {opt}
+                      </div>
+                      {showCorrection && (
+                        <div className="flex-shrink-0">
+                          {i === questions[currentIndex].correctIndex ? (
+                            <Check className="w-6 h-6 text-green-500" />
+                          ) : i === selectedAnswer ? (
+                            <X className="w-6 h-6 text-red-500" />
+                          ) : null}
+                        </div>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {showCorrection && (
+                <motion.div 
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="p-6 bg-indigo-50 dark:bg-indigo-900/20 rounded-2xl border border-indigo-100 dark:border-indigo-800 space-y-2"
+                >
+                  <div className="flex items-center gap-2 text-indigo-600 dark:text-indigo-400 font-black text-xs uppercase tracking-widest">
+                    <Bot className="w-4 h-4" />
+                    Penjelasan
+                  </div>
+                  <p className="text-slate-700 dark:text-slate-300 text-sm leading-relaxed font-medium">
+                    {questions[currentIndex].explanation}
+                  </p>
+                  <button 
+                    onClick={nextQuestion}
+                    className="mt-4 w-full py-4 bg-indigo-600 text-white rounded-xl font-black uppercase tracking-widest text-xs shadow-lg shadow-indigo-200 dark:shadow-none"
+                  >
+                    {currentIndex === questions.length - 1 ? 'Lihat Hasil' : 'Pertanyaan Selanjutnya'}
+                  </button>
+                </motion.div>
+              )}
+            </motion.div>
+          </div>
+        )}
+
+        {isFinished && (
+          <motion.div 
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="bg-white dark:bg-slate-900 p-10 rounded-[2.5rem] shadow-xl border border-slate-100 dark:border-slate-800 text-center space-y-8"
+          >
+            <div className="w-24 h-24 bg-indigo-600 rounded-full flex items-center justify-center mx-auto shadow-2xl shadow-indigo-200 dark:shadow-none">
+              <Check className="w-12 h-12 text-white" />
+            </div>
+            <div className="space-y-2">
+              <h2 className="text-3xl font-black text-slate-800 dark:text-white">Kuis Selesai!</h2>
+              <p className="text-slate-500 dark:text-slate-400 font-medium">Kamu berhasil menyelesaikan kuis.</p>
+            </div>
+            <div className="p-8 bg-slate-50 dark:bg-slate-800 rounded-3xl border border-slate-100 dark:border-slate-700">
+              <div className="text-5xl font-black text-indigo-600 dark:text-indigo-400">{score} / {questions.length}</div>
+              <div className="text-xs font-black text-slate-400 uppercase tracking-[0.2em] mt-2">Skor Kamu</div>
+            </div>
+            <div className="flex flex-col gap-3">
+              <button 
+                onClick={() => { setQuestions([]); setIsFinished(false); setQuizTopic(''); }}
+                className="w-full py-5 bg-indigo-600 text-white rounded-2xl font-black uppercase tracking-widest shadow-lg shadow-indigo-200 dark:shadow-none"
+              >
+                Coba Materi Lain
+              </button>
+              <button 
+                onClick={() => setView('chat')}
+                className="w-full py-5 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 rounded-2xl font-black uppercase tracking-widest"
+              >
+                Kembali ke Chat
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </div>
+    </main>
+  );
 }
 
 export default function App() {
@@ -54,6 +350,13 @@ export default function App() {
   const [pdfContent, setPdfContent] = useState<string | null>(null);
   const [pdfFileName, setPdfFileName] = useState<string | null>(null);
   const [isExtractingPdf, setIsExtractingPdf] = useState(false);
+  const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
+
+  useEffect(() => {
+    // Set worker for pdfjs
+    pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js`;
+  }, []);
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const recognitionRef = useRef<any>(null);
   const liveSessionRef = useRef<any>(null);
@@ -416,7 +719,7 @@ export default function App() {
     setError(null);
     try {
       const arrayBuffer = await file.arrayBuffer();
-      const pdf = await pdfjs.getDocument({ data: arrayBuffer }).promise;
+      const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
       let fullText = '';
       for (let i = 1; i <= pdf.numPages; i++) {
         const page = await pdf.getPage(i);
@@ -441,6 +744,32 @@ export default function App() {
     } else if (file) {
       setError('Hanya file PDF yang didukung untuk saat ini.');
     }
+  };
+
+  const getCurrentLocation = (): Promise<{ lat: number; lng: number } | null> => {
+    return new Promise((resolve) => {
+      if (!navigator.geolocation) {
+        console.warn('Geolocation is not supported by your browser');
+        resolve(null);
+        return;
+      }
+
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          const loc = {
+            lat: position.coords.latitude,
+            lng: position.coords.longitude
+          };
+          setUserLocation(loc);
+          resolve(loc);
+        },
+        (error) => {
+          console.error('Geolocation error:', error);
+          resolve(null);
+        },
+        { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
+      );
+    });
   };
 
   const handleSend = async (textOverride?: string, isVoice: boolean = false) => {
@@ -481,9 +810,27 @@ export default function App() {
         parts: [{ text: msg.content }]
       }));
 
+      // Detect location/weather intent
+      const lowerText = messageText.toLowerCase();
+      const isLocationQuery = /lokasi|tempat|kafe|restoran|dekat|di mana|maps|rute|jarak|makan|minum|kopi|warung|toko|apotek|spbu|bensin|mall|atm|bank/.test(lowerText);
+      const isWeatherQuery = /cuaca|hujan|panas|dingin|suhu|ramalan/.test(lowerText);
+      
+      let locationContext = "";
+      let currentCoords = userLocation;
+
+      if (isLocationQuery || isWeatherQuery) {
+        const loc = await getCurrentLocation();
+        if (loc) {
+          currentCoords = loc;
+          locationContext = `LOKASI GPS AKTIF: Latitude ${loc.lat}, Longitude ${loc.lng}. CARI YANG PALING DEKAT DENGAN TITIK INI. JANGAN CARI DI KOTA LAIN.`;
+        }
+      }
+
       const finalPrompt = pdfContent 
-        ? `Gunakan materi PDF berikut sebagai referensi untuk menjawab pertanyaan saya: \n\n--- MATERI PDF ---\n${pdfContent}\n--- AKHIR MATERI ---\n\nPertanyaan saya: ${messageText}`
-        : messageText;
+        ? `Gunakan materi PDF berikut sebagai referensi untuk menjawab pertanyaan saya: \n\n--- MATERI PDF ---\n${pdfContent}\n--- AKHIR MATERI ---\n\nPertanyaan saya: ${messageText}${locationContext ? `\n\n[${locationContext}]` : ''}`
+        : locationContext 
+          ? `[KONTEKS LOKASI: ${locationContext}]\n\nPertanyaan: ${messageText}`
+          : messageText;
 
       // Clear PDF after sending
       setPdfContent(null);
@@ -491,7 +838,7 @@ export default function App() {
 
       // Use streaming for faster perceived response
       let result;
-      const systemInstruction = mode === 'study' 
+      const baseSystemInstruction = mode === 'study' 
         ? `Anda adalah AI R.G dalam MODE BELAJAR. Fokus pada penjelasan materi pendidikan yang mendalam, langkah demi langkah, dan edukatif.
            Waktu saat ini: ${new Date().toLocaleString('id-ID', { timeZone: 'Asia/Jakarta', dateStyle: 'full', timeStyle: 'long' })}.
            Karakter: Sabar, cerdas, ramah, dan sangat membantu dalam memahami konsep sulit.
@@ -503,12 +850,33 @@ export default function App() {
            Berikan jawaban 1-2 kalimat saja agar cepat. Langsung ke intinya.
            Gunakan Google Search untuk memberikan informasi terbaru dan akurat jika diperlukan.`;
 
+      const locationInstruction = currentCoords 
+        ? `\n\nPENTING: Pengguna sedang menanyakan hal terkait lokasi/cuaca di sekitarnya. 
+           Gunakan koordinat Latitude: ${currentCoords.lat}, Longitude: ${currentCoords.lng} sebagai titik pusat pencarian.
+           Jika mencari tempat (kafe, dll), prioritaskan hasil yang jaraknya paling dekat (radius < 5km) dari koordinat tersebut.
+           Jangan memberikan rekomendasi di kota lain kecuali diminta.`
+        : "";
+
+      const systemInstruction = baseSystemInstruction + locationInstruction;
+
       try {
+        // Use Google Maps for location queries, Google Search for others
+        const tools: any[] = isLocationQuery ? [{ googleMaps: {} }] : [{ googleSearch: {} }];
+        const toolConfig = currentCoords ? {
+          retrievalConfig: {
+            latLng: {
+              latitude: currentCoords.lat,
+              longitude: currentCoords.lng
+            }
+          }
+        } : undefined;
+
         result = await ai.models.generateContentStream({
           model: "gemini-3-flash-preview",
           contents: [...history, { role: 'user', parts: [{ text: finalPrompt }] }],
           config: {
-            tools: [{ googleSearch: {} }],
+            tools,
+            toolConfig,
             systemInstruction,
           }
         });
@@ -526,6 +894,7 @@ export default function App() {
 
       let fullText = '';
       let firstSentenceSpoken = false;
+      let groundingChunks: any[] = [];
       const aiMessage: Message = {
         role: 'model',
         content: '',
@@ -538,6 +907,13 @@ export default function App() {
       for await (const chunk of result) {
         if (currentAbortController.signal.aborted) return;
         const chunkText = chunk.text;
+        
+        // Collect grounding metadata if available
+        const metadata = (chunk as any).candidates?.[0]?.groundingMetadata;
+        if (metadata?.groundingChunks) {
+          groundingChunks = [...groundingChunks, ...metadata.groundingChunks];
+        }
+
         if (chunkText) {
           fullText += chunkText;
           
@@ -552,6 +928,7 @@ export default function App() {
             const lastMsg = newMessages[newMessages.length - 1];
             if (lastMsg && lastMsg.role === 'model') {
               lastMsg.content = fullText;
+              lastMsg.groundingChunks = groundingChunks.length > 0 ? groundingChunks : undefined;
             }
             return newMessages;
           });
@@ -600,283 +977,6 @@ export default function App() {
     stopSpeaking();
   };
 
-  function QuizView() {
-    const [quizTopic, setQuizTopic] = useState('');
-    const [questions, setQuestions] = useState<any[]>([]);
-    const [currentIndex, setCurrentIndex] = useState(0);
-    const [score, setScore] = useState(0);
-    const [isFinished, setIsFinished] = useState(false);
-    const [isGenerating, setIsGenerating] = useState(false);
-    const [selectedAnswer, setSelectedAnswer] = useState<number | null>(null);
-    const [showCorrection, setShowCorrection] = useState(false);
-
-    const generateQuiz = async () => {
-      const topic = quizTopic.trim() || pdfContent;
-      if (!topic) return;
-      setIsGenerating(true);
-      setQuestions([]);
-      setCurrentIndex(0);
-      setScore(0);
-      setIsFinished(false);
-
-      try {
-        const apiKey = getApiKey();
-        const ai = new GoogleGenAI({ apiKey });
-        const response = await ai.models.generateContent({
-          model: "gemini-3-flash-preview",
-          contents: pdfContent 
-            ? `Buatkan kuis pilihan ganda berdasarkan materi PDF berikut: \n\n${pdfContent}\n\nBerikan 5 pertanyaan yang menantang dan edukatif.`
-            : `Buatkan kuis pilihan ganda tentang materi: ${quizTopic}. Berikan 5 pertanyaan yang menantang dan edukatif.`,
-          config: {
-            responseMimeType: "application/json",
-            responseSchema: {
-              type: Type.ARRAY,
-              items: {
-                type: Type.OBJECT,
-                properties: {
-                  question: { type: Type.STRING },
-                  options: {
-                    type: Type.ARRAY,
-                    items: { type: Type.STRING }
-                  },
-                  correctIndex: { type: Type.INTEGER },
-                  explanation: { type: Type.STRING }
-                },
-                required: ["question", "options", "correctIndex", "explanation"]
-              }
-            }
-          }
-        });
-
-        const data = JSON.parse(response.text || '[]');
-        setQuestions(data);
-        // Clear PDF after generating quiz
-        setPdfContent(null);
-        setPdfFileName(null);
-      } catch (err) {
-        console.error(err);
-        setError("Gagal membuat kuis. Coba lagi ya!");
-      } finally {
-        setIsGenerating(false);
-      }
-    };
-
-    const handleAnswer = (idx: number) => {
-      if (showCorrection) return;
-      setSelectedAnswer(idx);
-      setShowCorrection(true);
-      if (idx === questions[currentIndex].correctIndex) {
-        setScore(prev => prev + 1);
-      }
-    };
-
-    const nextQuestion = () => {
-      setSelectedAnswer(null);
-      setShowCorrection(false);
-      if (currentIndex < questions.length - 1) {
-        setCurrentIndex(prev => prev + 1);
-      } else {
-        setIsFinished(true);
-      }
-    };
-
-    return (
-      <main className="flex-1 overflow-y-auto p-4 md:p-8 bg-slate-50 dark:bg-slate-950">
-        <div className="max-w-2xl mx-auto">
-          {!questions.length && !isGenerating && (
-            <motion.div 
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="bg-white dark:bg-slate-900 p-8 rounded-[2.5rem] shadow-xl border border-slate-100 dark:border-slate-800 text-center space-y-6"
-            >
-              <div className="w-20 h-20 bg-indigo-100 dark:bg-indigo-900/30 rounded-3xl flex items-center justify-center mx-auto">
-                <GraduationCap className="w-10 h-10 text-indigo-600 dark:text-indigo-400" />
-              </div>
-              <div className="space-y-2">
-                <h2 className="text-2xl font-black text-slate-800 dark:text-white">Mode Kuis AI R.G</h2>
-                <p className="text-slate-500 dark:text-slate-400 font-medium">Masukkan materi pelajaran yang mau kamu uji pemahamannya.</p>
-              </div>
-                <div className="space-y-4">
-                  {pdfFileName ? (
-                    <div className="p-5 bg-indigo-50 dark:bg-indigo-900/20 border-2 border-indigo-500 border-dashed rounded-2xl flex items-center justify-between">
-                      <div className="flex items-center gap-3 overflow-hidden">
-                        <FileText className="w-6 h-6 text-indigo-600 flex-shrink-0" />
-                        <span className="text-sm font-bold text-slate-700 dark:text-slate-200 truncate">{pdfFileName}</span>
-                      </div>
-                      <button 
-                        onClick={() => { setPdfContent(null); setPdfFileName(null); }}
-                        className="p-1 hover:bg-indigo-100 dark:hover:bg-indigo-800 rounded-lg text-indigo-600"
-                      >
-                        <X className="w-5 h-5" />
-                      </button>
-                    </div>
-                  ) : (
-                    <input 
-                      type="text" 
-                      value={quizTopic}
-                      onChange={(e) => setQuizTopic(e.target.value)}
-                      placeholder="Contoh: Fotosintesis, Sejarah Indonesia, Aljabar..."
-                      className="w-full p-5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all font-bold text-slate-800 dark:text-white"
-                    />
-                  )}
-
-                  <div className="flex gap-3">
-                    <label className="flex-1">
-                      <input 
-                        type="file" 
-                        accept="application/pdf" 
-                        className="hidden" 
-                        onChange={handleFileUpload}
-                      />
-                      <div className="w-full py-5 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-2 border-slate-200 dark:border-slate-700 rounded-2xl font-black uppercase tracking-widest flex items-center justify-center gap-3 cursor-pointer hover:border-indigo-500 hover:text-indigo-600 transition-all">
-                        <Upload className="w-5 h-5" />
-                        Upload PDF
-                      </div>
-                    </label>
-                    <button 
-                      onClick={generateQuiz}
-                      disabled={(!quizTopic.trim() && !pdfContent) || isExtractingPdf}
-                      className="flex-[2] py-5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-2xl font-black uppercase tracking-widest shadow-lg shadow-indigo-200 dark:shadow-none transition-all flex items-center justify-center gap-3"
-                    >
-                      {isExtractingPdf ? <Loader2 className="w-5 h-5 animate-spin" /> : <Sparkles className="w-5 h-5" />}
-                      Buat Kuis Sekarang
-                    </button>
-                  </div>
-                </div>
-            </motion.div>
-          )}
-
-          {isGenerating && (
-            <div className="flex flex-col items-center justify-center h-64 space-y-4">
-              <Loader2 className="w-12 h-12 text-indigo-600 animate-spin" />
-              <p className="text-slate-500 dark:text-slate-400 font-black uppercase tracking-widest text-xs">AI R.G sedang meracik kuis untukmu...</p>
-            </div>
-          )}
-
-          {questions.length > 0 && !isFinished && (
-            <div className="space-y-6">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-black text-slate-400 uppercase tracking-widest">Pertanyaan {currentIndex + 1} dari {questions.length}</span>
-                <div className="h-2 w-32 bg-slate-200 dark:bg-slate-800 rounded-full overflow-hidden">
-                  <div 
-                    className="h-full bg-indigo-600 transition-all duration-500" 
-                    style={{ width: `${((currentIndex + 1) / questions.length) * 100}%` }}
-                  />
-                </div>
-              </div>
-
-              <motion.div 
-                key={currentIndex}
-                initial={{ opacity: 0, x: 20 }}
-                animate={{ opacity: 1, x: 0 }}
-                className="bg-white dark:bg-slate-900 p-8 rounded-[2.5rem] shadow-xl border border-slate-100 dark:border-slate-800 space-y-8"
-              >
-                <h3 className="text-xl md:text-2xl font-black text-slate-800 dark:text-white leading-tight">
-                  {questions[currentIndex].question}
-                </h3>
-
-                <div className="grid grid-cols-1 gap-3">
-                  {questions[currentIndex].options.map((opt: string, i: number) => {
-                    let btnClass = "bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300";
-                    if (showCorrection) {
-                      if (i === questions[currentIndex].correctIndex) {
-                        btnClass = "bg-green-50 dark:bg-green-900/20 border-green-500 text-green-700 dark:text-green-400";
-                      } else if (i === selectedAnswer) {
-                        btnClass = "bg-red-50 dark:bg-red-900/20 border-red-500 text-red-700 dark:text-red-400";
-                      }
-                    } else if (selectedAnswer === i) {
-                      btnClass = "bg-indigo-50 dark:bg-indigo-900/20 border-indigo-500 text-indigo-700 dark:text-indigo-400";
-                    }
-
-                    return (
-                      <button
-                        key={i}
-                        onClick={() => handleAnswer(i)}
-                        disabled={showCorrection}
-                        className={`p-5 text-left rounded-2xl border-2 font-bold transition-all flex items-center justify-between gap-4 ${btnClass}`}
-                      >
-                        <div className="flex items-center gap-4">
-                          <span className="w-8 h-8 rounded-lg bg-white dark:bg-slate-700 flex items-center justify-center text-xs shadow-sm border border-slate-100 dark:border-slate-600">
-                            {String.fromCharCode(65 + i)}
-                          </span>
-                          {opt}
-                        </div>
-                        {showCorrection && (
-                          <div className="flex-shrink-0">
-                            {i === questions[currentIndex].correctIndex ? (
-                              <Check className="w-6 h-6 text-green-500" />
-                            ) : i === selectedAnswer ? (
-                              <X className="w-6 h-6 text-red-500" />
-                            ) : null}
-                          </div>
-                        )}
-                      </button>
-                    );
-                  })}
-                </div>
-
-                {showCorrection && (
-                  <motion.div 
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className="p-6 bg-indigo-50 dark:bg-indigo-900/20 rounded-2xl border border-indigo-100 dark:border-indigo-800 space-y-2"
-                  >
-                    <div className="flex items-center gap-2 text-indigo-600 dark:text-indigo-400 font-black text-xs uppercase tracking-widest">
-                      <Bot className="w-4 h-4" />
-                      Penjelasan
-                    </div>
-                    <p className="text-slate-700 dark:text-slate-300 text-sm leading-relaxed font-medium">
-                      {questions[currentIndex].explanation}
-                    </p>
-                    <button 
-                      onClick={nextQuestion}
-                      className="mt-4 w-full py-4 bg-indigo-600 text-white rounded-xl font-black uppercase tracking-widest text-xs shadow-lg shadow-indigo-200 dark:shadow-none"
-                    >
-                      {currentIndex === questions.length - 1 ? 'Lihat Hasil' : 'Pertanyaan Selanjutnya'}
-                    </button>
-                  </motion.div>
-                )}
-              </motion.div>
-            </div>
-          )}
-
-          {isFinished && (
-            <motion.div 
-              initial={{ opacity: 0, scale: 0.9 }}
-              animate={{ opacity: 1, scale: 1 }}
-              className="bg-white dark:bg-slate-900 p-10 rounded-[2.5rem] shadow-xl border border-slate-100 dark:border-slate-800 text-center space-y-8"
-            >
-              <div className="w-24 h-24 bg-indigo-600 rounded-full flex items-center justify-center mx-auto shadow-2xl shadow-indigo-200 dark:shadow-none">
-                <Check className="w-12 h-12 text-white" />
-              </div>
-              <div className="space-y-2">
-                <h2 className="text-3xl font-black text-slate-800 dark:text-white">Kuis Selesai!</h2>
-                <p className="text-slate-500 dark:text-slate-400 font-medium">Kamu berhasil menyelesaikan kuis tentang <span className="text-indigo-600 font-bold">{quizTopic}</span>.</p>
-              </div>
-              <div className="p-8 bg-slate-50 dark:bg-slate-800 rounded-3xl border border-slate-100 dark:border-slate-700">
-                <div className="text-5xl font-black text-indigo-600 dark:text-indigo-400">{score} / {questions.length}</div>
-                <div className="text-xs font-black text-slate-400 uppercase tracking-[0.2em] mt-2">Skor Kamu</div>
-              </div>
-              <div className="flex flex-col gap-3">
-                <button 
-                  onClick={() => { setQuestions([]); setIsFinished(false); setQuizTopic(''); }}
-                  className="w-full py-5 bg-indigo-600 text-white rounded-2xl font-black uppercase tracking-widest shadow-lg shadow-indigo-200 dark:shadow-none"
-                >
-                  Coba Materi Lain
-                </button>
-                <button 
-                  onClick={() => setView('chat')}
-                  className="w-full py-5 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 rounded-2xl font-black uppercase tracking-widest"
-                >
-                  Kembali ke Chat
-                </button>
-              </div>
-            </motion.div>
-          )}
-        </div>
-      </main>
-    );
-  }
 
   return (
     <div className="flex flex-col h-screen bg-slate-50 dark:bg-slate-950 font-sans text-slate-900 dark:text-slate-100 transition-colors duration-300 overflow-hidden">
@@ -1059,6 +1159,12 @@ export default function App() {
         </div>
       </header>
 
+      {error && (
+        <div className="max-w-2xl mx-auto mb-4 p-4 bg-red-50 dark:bg-red-900/20 border border-red-100 dark:border-red-900/50 text-red-600 dark:text-red-400 rounded-2xl text-sm text-center font-bold">
+          {error}
+        </div>
+      )}
+
       {/* Chat Area */}
       {view === 'chat' ? (
         <main className="flex-1 overflow-y-auto p-4 md:p-6 space-y-6 scroll-smooth">
@@ -1114,7 +1220,39 @@ export default function App() {
                         ? 'bg-indigo-600 text-white rounded-tr-none' 
                         : 'bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 border border-slate-100 dark:border-slate-700 rounded-tl-none'
                     }`}>
+                      {msg.role === 'model' && msg.groundingChunks && msg.groundingChunks.some(c => c.maps) && (
+                        <div className="flex items-center gap-1.5 mb-3 px-2 py-1 bg-green-50 dark:bg-green-900/20 border border-green-100 dark:border-green-900/30 rounded-xl w-fit">
+                          <MapPin className="w-3 h-3 text-green-600 dark:text-green-400" />
+                          <span className="text-[10px] font-black text-green-600 dark:text-green-400 uppercase tracking-wider">Lokasi Akurat</span>
+                        </div>
+                      )}
                       <p className="whitespace-pre-wrap leading-relaxed text-sm md:text-base font-medium">{msg.content}</p>
+                      
+                      {msg.groundingChunks && msg.groundingChunks.length > 0 && (
+                        <div className="mt-4 pt-4 border-t border-slate-100 dark:border-slate-700/50 space-y-2">
+                          <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500 mb-2">Sumber & Lokasi:</p>
+                          <div className="flex flex-wrap gap-2">
+                            {msg.groundingChunks.map((chunk, cIdx) => {
+                              const title = chunk.web?.title || chunk.maps?.title || 'Lihat Detail';
+                              const uri = chunk.web?.uri || chunk.maps?.uri;
+                              if (!uri) return null;
+                              return (
+                                <a
+                                  key={cIdx}
+                                  href={uri}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="flex items-center gap-2 px-3 py-1.5 bg-slate-50 dark:bg-slate-900/50 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 border border-slate-100 dark:border-slate-700 rounded-xl text-xs font-bold text-indigo-600 dark:text-indigo-400 transition-all group/link"
+                                >
+                                  {chunk.maps ? <MapPin className="w-3 h-3" /> : <Search className="w-3 h-3" />}
+                                  <span className="truncate max-w-[150px]">{title}</span>
+                                </a>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+
                       {msg.image && (
                         <motion.div 
                           initial={{ opacity: 0, scale: 0.9 }}
@@ -1180,15 +1318,19 @@ export default function App() {
             </motion.div>
           )}
 
-          {error && (
-            <div className="p-4 bg-red-50 dark:bg-red-900/20 border border-red-100 dark:border-red-900/50 text-red-600 dark:text-red-400 rounded-2xl text-sm text-center font-bold">
-              {error}
-            </div>
-          )}
           <div ref={messagesEndRef} />
         </main>
       ) : (
-        <QuizView />
+        <QuizView 
+          pdfContent={pdfContent}
+          pdfFileName={pdfFileName}
+          setPdfContent={setPdfContent}
+          setPdfFileName={setPdfFileName}
+          isExtractingPdf={isExtractingPdf}
+          handleFileUpload={handleFileUpload}
+          setError={setError}
+          setView={setView}
+        />
       )}
 
       {/* Voice Controls Floating Bar */}
