@@ -4,9 +4,9 @@
  */
 
 import { useState, useRef, useEffect } from 'react';
-import { Send, Bot, User, Loader2, Sparkles, Trash2, Copy, Check, Mic, MicOff, Volume2, GraduationCap, Pause, Play, Square } from 'lucide-react';
+import { Send, Bot, User, Loader2, Sparkles, Trash2, Copy, Check, Mic, MicOff, Volume2, GraduationCap, Pause, Play, Square, VolumeX } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { GoogleGenAI } from '@google/genai';
+import { GoogleGenAI, Modality } from '@google/genai';
 
 // Initialize Gemini with support for both AI Studio and Vercel/Vite environments
 const getApiKey = () => {
@@ -58,7 +58,7 @@ export default function App() {
 
       recognitionRef.current.onresult = (event: any) => {
         const transcript = event.results[0][0].transcript;
-        handleSend(transcript, true);
+        handleSendRef.current(transcript, true);
         setIsListening(false);
       };
 
@@ -74,109 +74,110 @@ export default function App() {
   }, []);
 
   const [isSpeaking, setIsSpeaking] = useState(false);
-  const [isPaused, setIsPaused] = useState(false);
-
-  useEffect(() => {
-    const handleVoicesChanged = () => {
-      window.speechSynthesis.getVoices();
-    };
-    window.speechSynthesis.addEventListener('voiceschanged', handleVoicesChanged);
-    return () => window.speechSynthesis.removeEventListener('voiceschanged', handleVoicesChanged);
-  }, []);
-
-  const toggleListening = () => {
-    if (isListening) {
-      recognitionRef.current?.stop();
-    } else {
-      recognitionRef.current?.start();
-      setIsListening(true);
-    }
-  };
-
-  const speakText = (text: string) => {
-    // 1. Bersihkan teks dari simbol Markdown (*, #, _, etc.) agar tidak dibaca kaku
-    const cleanText = text
-      .replace(/[*#_~`>]/g, '') // Hapus simbol Markdown
-      .replace(/\[.*?\]\(.*?\)/g, '') // Hapus link Markdown
-      .replace(/\s+/g, ' ') // Rapikan spasi
-      .trim();
-
-    const utterance = new SpeechSynthesisUtterance(cleanText);
-    
-    // 2. Deteksi Bahasa (Sederhana)
-    // Cek apakah teks mengandung kata-kata umum bahasa Inggris
-    const englishWords = /\b(the|and|is|in|it|you|that|was|for|on|are|with|as|at|be|this|have|from|or|one|had|by|word|but|not|what|all|were|we|when|your|can|said|there|use|an|each|which|she|do|how|their|if|will|up|other|about|out|many|then|them|these|so|some|her|would|make|like|him|into|time|has|look|two|more|write|go|see|number|no|way|could|people|my|than|first|water|been|called|who|oil|its|now|find|long|down|day|did|get|come|made|may|part)\b/gi;
-    const englishMatches = cleanText.match(englishWords);
-    
-    // Jika lebih dari 15% kata adalah kata Inggris umum, anggap bahasa Inggris
-    const wordCount = cleanText.split(/\s+/).length;
-    const isEnglish = englishMatches && (englishMatches.length / wordCount > 0.15 || englishMatches.length > 5);
-
-    const voices = window.speechSynthesis.getVoices();
-    let selectedVoice = null;
-
-    if (isEnglish) {
-      utterance.lang = 'en-US';
-      const enVoices = voices.filter(v => v.lang.startsWith('en'));
-      // Prioritaskan suara laki-laki
-      selectedVoice = enVoices.find(v => 
-        (v.name.toLowerCase().includes('male') || v.name.toLowerCase().includes('david') || v.name.toLowerCase().includes('google') || v.name.toLowerCase().includes('microsoft')) &&
-        !v.name.toLowerCase().includes('female') && !v.name.toLowerCase().includes('zira')
-      ) || enVoices[0];
-    } else {
-      utterance.lang = 'id-ID';
-      const idVoices = voices.filter(v => v.lang.startsWith('id'));
-      selectedVoice = idVoices.find(v => 
-        v.name.toLowerCase().includes('male') || 
-        v.name.toLowerCase().includes('david') || 
-        v.name.toLowerCase().includes('google') || 
-        v.name.toLowerCase().includes('microsoft')
-      ) || idVoices[0];
-    }
-    
-    if (selectedVoice) {
-      utterance.voice = selectedVoice;
-    }
-    
-    // 3. Atur agar tidak kaku (robotik)
-    utterance.pitch = 0.85; // Lebih rendah lagi biar kerasa cowok
-    utterance.rate = 1.0;  // Kecepatan normal
-    utterance.volume = 1.0;
-
-    utterance.onstart = () => {
-      setIsSpeaking(true);
-      setIsPaused(false);
-    };
-
-    utterance.onend = () => {
-      setIsSpeaking(false);
-      setIsPaused(false);
-    };
-
-    utterance.onerror = () => {
-      setIsSpeaking(false);
-      setIsPaused(false);
-    };
-
-    // Hentikan suara sebelumnya jika ada yang sedang bicara
-    window.speechSynthesis.cancel();
-    window.speechSynthesis.speak(utterance);
-  };
-
-  const togglePause = () => {
-    if (isPaused) {
-      window.speechSynthesis.resume();
-      setIsPaused(false);
-    } else {
-      window.speechSynthesis.pause();
-      setIsPaused(true);
-    }
-  };
+  const [isAudioLoading, setIsAudioLoading] = useState(false);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const audioSourceRef = useRef<AudioBufferSourceNode | null>(null);
 
   const stopSpeaking = () => {
-    window.speechSynthesis.cancel();
+    if (audioSourceRef.current) {
+      audioSourceRef.current.stop();
+      audioSourceRef.current = null;
+    }
     setIsSpeaking(false);
-    setIsPaused(false);
+  };
+
+  const speakText = async (text: string) => {
+    if (!text.trim() || isAudioLoading) return;
+
+    // Stop previous audio
+    stopSpeaking();
+    setIsAudioLoading(true);
+
+    try {
+      const apiKey = getApiKey();
+      const aiTts = new GoogleGenAI({ apiKey });
+      
+      // Clean text for TTS
+      const cleanText = text
+        .replace(/[*#_~`>]/g, '')
+        .replace(/\[.*?\]\(.*?\)/g, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+
+      const response = await aiTts.models.generateContent({
+        model: "gemini-2.5-flash-preview-tts",
+        contents: [{ parts: [{ text: `Bacakan dengan gaya asik dan ramah: ${cleanText}` }] }],
+        config: {
+          responseModalities: [Modality.AUDIO],
+          speechConfig: {
+            voiceConfig: {
+              prebuiltVoiceConfig: { voiceName: 'Zephyr' }, // Zephyr is clear and helpful
+            },
+          },
+        },
+      });
+
+      const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+      
+      if (base64Audio) {
+        // Play PCM Audio (24000Hz)
+        const binaryString = atob(base64Audio);
+        const bytes = new Uint8Array(binaryString.length);
+        for (let i = 0; i < binaryString.length; i++) {
+          bytes[i] = binaryString.charCodeAt(i);
+        }
+
+        // Convert 16-bit PCM to Float32
+        const float32Data = new Float32Array(bytes.length / 2);
+        const view = new DataView(bytes.buffer);
+        for (let i = 0; i < float32Data.length; i++) {
+          float32Data[i] = view.getInt16(i * 2, true) / 32768.0;
+        }
+
+        if (!audioContextRef.current) {
+          audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+        }
+        
+        const buffer = audioContextRef.current.createBuffer(1, float32Data.length, 24000);
+        buffer.getChannelData(0).set(float32Data);
+        
+        const source = audioContextRef.current.createBufferSource();
+        source.buffer = buffer;
+        source.connect(audioContextRef.current.destination);
+        
+        source.onended = () => {
+          setIsSpeaking(false);
+          audioSourceRef.current = null;
+        };
+
+        audioSourceRef.current = source;
+        source.start();
+        setIsSpeaking(true);
+      }
+    } catch (err) {
+      console.error('TTS Error:', err);
+    } finally {
+      setIsAudioLoading(false);
+    }
+  };
+
+  const toggleListening = () => {
+    if (!recognitionRef.current) {
+      setError("Browser lo nggak dukung fitur suara nih, atau izin mic-nya belum dikasih.");
+      return;
+    }
+
+    try {
+      if (isListening) {
+        recognitionRef.current.stop();
+      } else {
+        recognitionRef.current.start();
+        setIsListening(true);
+      }
+    } catch (err) {
+      console.error('Speech start error:', err);
+      setIsListening(false);
+    }
   };
 
   const abortControllerRef = useRef<AbortController | null>(null);
@@ -261,6 +262,12 @@ export default function App() {
       }
     }
   };
+
+  // Use a ref to always have the latest handleSend for speech callbacks
+  const handleSendRef = useRef(handleSend);
+  useEffect(() => {
+    handleSendRef.current = handleSend;
+  }, [handleSend]);
 
   const copyToClipboard = (text: string, id: number) => {
     navigator.clipboard.writeText(text);
@@ -377,10 +384,11 @@ export default function App() {
                       </button>
                       <button
                         onClick={() => speakText(msg.content)}
-                        className="p-2 text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 bg-white dark:bg-slate-800 rounded-lg shadow-sm border border-slate-100 dark:border-slate-700"
-                        title="Dengarkan"
+                        disabled={isAudioLoading}
+                        className={`p-2 text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 bg-white dark:bg-slate-800 rounded-lg shadow-sm border border-slate-100 dark:border-slate-700 ${isAudioLoading ? 'animate-pulse' : ''}`}
+                        title="Dengarkan Suara Gemini"
                       >
-                        <Volume2 className="w-4 h-4" />
+                        {isAudioLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Volume2 className="w-4 h-4" />}
                       </button>
                     </div>
                   )}
@@ -424,30 +432,23 @@ export default function App() {
             exit={{ y: 100, opacity: 0 }}
             className="fixed bottom-24 left-1/2 -translate-x-1/2 z-20 flex items-center gap-2 p-2 bg-indigo-600 rounded-2xl shadow-2xl border border-indigo-500"
           >
-            <div className="flex items-center gap-3 px-3">
-              <div className="flex gap-1">
-                <div className="w-1 h-4 bg-white/40 rounded-full animate-bounce" />
-                <div className="w-1 h-6 bg-white rounded-full animate-bounce [animation-delay:0.1s]" />
-                <div className="w-1 h-3 bg-white/60 rounded-full animate-bounce [animation-delay:0.2s]" />
+              <div className="flex items-center gap-3 px-3">
+                <div className="flex gap-1">
+                  <div className="w-1 h-4 bg-white/40 rounded-full animate-bounce" />
+                  <div className="w-1 h-6 bg-white rounded-full animate-bounce [animation-delay:0.1s]" />
+                  <div className="w-1 h-3 bg-white/60 rounded-full animate-bounce [animation-delay:0.2s]" />
+                </div>
+                <span className="text-xs font-black text-white uppercase tracking-widest">AI R.G Sedang Bicara</span>
               </div>
-              <span className="text-xs font-black text-white uppercase tracking-widest">AI R.G Sedang Bicara</span>
-            </div>
-            <div className="flex items-center gap-1">
-              <button
-                onClick={togglePause}
-                className="p-2 bg-white/20 hover:bg-white/30 text-white rounded-xl transition-all"
-                title={isPaused ? "Lanjutkan" : "Jeda"}
-              >
-                {isPaused ? <Play className="w-4 h-4 fill-current" /> : <Pause className="w-4 h-4 fill-current" />}
-              </button>
-              <button
-                onClick={stopSpeaking}
-                className="p-2 bg-white/20 hover:bg-white/30 text-white rounded-xl transition-all"
-                title="Berhenti"
-              >
-                <Square className="w-4 h-4 fill-current" />
-              </button>
-            </div>
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={stopSpeaking}
+                  className="p-2 bg-white/20 hover:bg-white/30 text-white rounded-xl transition-all"
+                  title="Berhenti"
+                >
+                  <VolumeX className="w-4 h-4" />
+                </button>
+              </div>
           </motion.div>
         )}
       </AnimatePresence>
