@@ -426,9 +426,10 @@ export default function App() {
     setIsLoading(true);
     setError(null);
 
-    // Image generation detection - simplified and more robust
-    const imageKeywords = ['buat', 'bikin', 'generate', 'lukis', 'gambar', 'poto', 'foto', 'photo', 'image', 'render', 'draw', 'create', 'lukiskan', 'gambarin', 'bikinin', 'tampilin', 'potoin', 'fotoin'];
-    const isImagePrompt = imageKeywords.some(word => new RegExp(`\\b${word}\\b`, 'i').test(messageText));
+    // Image generation detection - more aggressive and handles suffixes
+    const imageKeywords = ['buat', 'bikin', 'generate', 'lukis', 'gambar', 'poto', 'foto', 'photo', 'image', 'render', 'draw', 'create', 'lukiskan', 'gambarin', 'bikinin', 'tampilin', 'potoin', 'fotoin', 'visualisasi', 'tunjukin'];
+    // Use a more flexible regex that doesn't strictly require word boundaries for suffixes
+    const isImagePrompt = imageKeywords.some(word => new RegExp(word, 'i').test(messageText));
 
     try {
       const apiKey = getApiKey();
@@ -441,10 +442,11 @@ export default function App() {
       // Function to handle image generation
       const generateImage = async (prompt: string) => {
         setIsImageGenerating(true);
+        setIsLoading(true); // Keep loading true for the whole process
         try {
           // Clean the prompt: remove common "request" words
           const cleanedPrompt = prompt
-            .replace(/\b(buatkan|buat|bikin|bikinin|tampilkan|tampilin|generate|lukis|lukiskan|gambar|gambarin|poto|foto|photo|image|render|draw|create|kan|in|tolong|dong|plis|please)\b/gi, '')
+            .replace(/\b(buatkan|buat|bikin|bikinin|tampilkan|tampilin|generate|lukis|lukiskan|gambar|gambarin|poto|foto|photo|image|render|draw|create|kan|in|tolong|dong|plis|please|visualisasikan|tunjukin)\b/gi, '')
             .replace(/\s+/g, ' ')
             .trim();
           
@@ -480,22 +482,24 @@ export default function App() {
             setMessages(prev => [...prev, aiMessage]);
             if (isVoice) speakText(aiMessage.content);
             return true;
+          } else {
+            throw new Error("Model nggak ngasih data gambar nih.");
           }
         } catch (imgErr) {
           console.error('Image Gen Error:', imgErr);
+          setError("Aduh sori bro, gagal bikin fotonya. Coba lagi atau ganti prompt-nya ya!");
         } finally {
           setIsImageGenerating(false);
+          setIsLoading(false);
         }
         return false;
       };
 
       if (isImagePrompt) {
         const success = await generateImage(messageText);
-        if (success) {
-          setIsLoading(false);
-          return;
-        }
-        // Fallback to text if image fails
+        if (success) return;
+        // If image gen fails, we've already set the error, so we stop here
+        return;
       }
 
       const history = messages.map(msg => ({
@@ -533,19 +537,17 @@ export default function App() {
         const chunkText = chunk.text;
         if (chunkText) {
           // Detect if the model is trying to use a tool or requesting an image
-          if (chunkText.includes('dalle.text2im') || chunkText.includes('action_input')) {
-            // If the model hallucinations a tool call, we catch it and trigger our image gen
+          if (chunkText.includes('dalle.text2im') || chunkText.includes('action_input') || chunkText.includes('bikinin fotonya') || chunkText.includes('buatin fotonya')) {
+            // If the model hallucinations a tool call or promises an image, we catch it
             const promptMatch = chunkText.match(/"prompt":\s*"([^"]+)"/);
             const extractedPrompt = promptMatch ? promptMatch[1] : messageText;
             
             // Remove the placeholder message we just added
             setMessages(prev => prev.slice(0, -1));
             
-            const success = await generateImage(extractedPrompt);
-            if (success) {
-              setIsLoading(false);
-              return;
-            }
+            await generateImage(extractedPrompt);
+            setIsLoading(false);
+            return;
           }
 
           fullText += chunkText;
