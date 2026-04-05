@@ -426,8 +426,8 @@ export default function App() {
     setIsLoading(true);
     setError(null);
 
-    // Image generation detection
-    const isImagePrompt = /buat foto|gambar|generate image|bikin foto|lukis/i.test(messageText);
+    // Image generation detection - more robust regex
+    const isImagePrompt = /(buat|bikin|generate|lukis|tampilkan|render).*(foto|gambar|image|lukisan)|gambar|photo/i.test(messageText);
 
     try {
       const apiKey = getApiKey();
@@ -868,6 +868,9 @@ export default function App() {
                   onClick={() => {
                     setInput('buat foto ');
                     setIsMenuOpen(false);
+                    // Focus the textarea after setting input
+                    const textarea = document.querySelector('textarea');
+                    if (textarea) textarea.focus();
                   }}
                   className="p-4 rounded-2xl transition-all flex flex-col items-center justify-center gap-1 min-w-[70px] bg-slate-50 dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:bg-purple-50 dark:hover:bg-purple-900/20 hover:text-purple-600"
                 >
