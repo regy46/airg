@@ -426,10 +426,9 @@ export default function App() {
     setIsLoading(true);
     setError(null);
 
-    // Image generation detection - more robust regex
+    // Image generation detection - simplified and more robust
     const imageKeywords = ['buat', 'bikin', 'generate', 'lukis', 'gambar', 'poto', 'foto', 'photo', 'image', 'render', 'draw', 'create', 'lukiskan', 'gambarin', 'bikinin', 'tampilin', 'potoin', 'fotoin'];
-    const isImagePrompt = imageKeywords.some(word => new RegExp(`\\b${word}\\b`, 'i').test(messageText)) && 
-                         !/\b(siapa|apa|dimana|kapan|kenapa|how|why|who|where|when|mana|apakah)\b/i.test(messageText);
+    const isImagePrompt = imageKeywords.some(word => new RegExp(`\\b${word}\\b`, 'i').test(messageText));
 
     try {
       const apiKey = getApiKey();
@@ -439,16 +438,17 @@ export default function App() {
 
       const ai = new GoogleGenAI({ apiKey });
 
-      if (isImagePrompt) {
+      // Function to handle image generation
+      const generateImage = async (prompt: string) => {
         setIsImageGenerating(true);
         try {
-          // Clean the prompt: remove common "request" words to help the image model focus on the subject
-          const cleanedPrompt = messageText
+          // Clean the prompt: remove common "request" words
+          const cleanedPrompt = prompt
             .replace(/\b(buatkan|buat|bikin|bikinin|tampilkan|tampilin|generate|lukis|lukiskan|gambar|gambarin|poto|foto|photo|image|render|draw|create|kan|in|tolong|dong|plis|please)\b/gi, '')
             .replace(/\s+/g, ' ')
             .trim();
           
-          const finalPrompt = cleanedPrompt || messageText;
+          const finalPrompt = cleanedPrompt || prompt;
 
           const response = await ai.models.generateContent({
             model: 'gemini-2.5-flash-image',
@@ -473,21 +473,29 @@ export default function App() {
           if (generatedImageBase64) {
             const aiMessage: Message = {
               role: 'model',
-              content: `Nih bro, foto "${messageText}" udah jadi! Gimana menurut lo?`,
+              content: `Nih bro, foto "${finalPrompt}" udah jadi! Gimana menurut lo?`,
               timestamp: new Date(),
               image: generatedImageBase64
             };
             setMessages(prev => [...prev, aiMessage]);
             if (isVoice) speakText(aiMessage.content);
-            setIsLoading(false);
-            setIsImageGenerating(false);
-            return;
+            return true;
           }
         } catch (imgErr) {
           console.error('Image Gen Error:', imgErr);
-          // Fallback to text if image fails
+        } finally {
+          setIsImageGenerating(false);
         }
-        setIsImageGenerating(false);
+        return false;
+      };
+
+      if (isImagePrompt) {
+        const success = await generateImage(messageText);
+        if (success) {
+          setIsLoading(false);
+          return;
+        }
+        // Fallback to text if image fails
       }
 
       const history = messages.map(msg => ({
@@ -504,7 +512,8 @@ export default function App() {
           systemInstruction: `Anda adalah AI R.G, asisten pendidikan cerdas. JAWAB SINGKAT & INSTAN.
           Waktu saat ini: ${new Date().toLocaleString('id-ID', { timeZone: 'Asia/Jakarta', dateStyle: 'full', timeStyle: 'long' })}.
           Karakter: Cerdas, ramah, gaul Jakarta (gue, lo, nih, deh). 
-          Berikan jawaban 1-2 kalimat saja agar cepat. Langsung ke intinya.`,
+          Berikan jawaban 1-2 kalimat saja agar cepat. Langsung ke intinya.
+          PENTING: Jika pengguna meminta gambar/foto, JANGAN mencoba menggunakan tool JSON atau DALL-E. Cukup katakan "Oke bro, gue bikinin fotonya ya!" dan sistem akan menanganinya.`,
         }
       });
 
@@ -523,6 +532,22 @@ export default function App() {
         if (currentAbortController.signal.aborted) return;
         const chunkText = chunk.text;
         if (chunkText) {
+          // Detect if the model is trying to use a tool or requesting an image
+          if (chunkText.includes('dalle.text2im') || chunkText.includes('action_input')) {
+            // If the model hallucinations a tool call, we catch it and trigger our image gen
+            const promptMatch = chunkText.match(/"prompt":\s*"([^"]+)"/);
+            const extractedPrompt = promptMatch ? promptMatch[1] : messageText;
+            
+            // Remove the placeholder message we just added
+            setMessages(prev => prev.slice(0, -1));
+            
+            const success = await generateImage(extractedPrompt);
+            if (success) {
+              setIsLoading(false);
+              return;
+            }
+          }
+
           fullText += chunkText;
           
           // Optimization: Start speaking as soon as the first sentence is ready
