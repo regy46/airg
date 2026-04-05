@@ -4,7 +4,7 @@
  */
 
 import { useState, useRef, useEffect } from 'react';
-import { Send, Bot, User, Loader2, Sparkles, Trash2, Copy, Check, Mic, MicOff, Volume2, GraduationCap, Pause, Play, Square, VolumeX, Image as ImageIcon } from 'lucide-react';
+import { Send, Bot, User, Loader2, Sparkles, Trash2, Copy, Check, Mic, MicOff, Volume2, GraduationCap, Pause, Play, Square, VolumeX, Image as ImageIcon, Plus, X, MoreVertical } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { GoogleGenAI, Modality, ThinkingLevel } from '@google/genai';
 
@@ -40,6 +40,7 @@ export default function App() {
   const [isLiveActive, setIsLiveActive] = useState(false);
   const [isLiveListening, setIsLiveListening] = useState(false);
   const [isImageGenerating, setIsImageGenerating] = useState(false);
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [isAudioLoading, setIsAudioLoading] = useState(false);
   const [micVolume, setMicVolume] = useState(0);
@@ -840,73 +841,96 @@ export default function App() {
 
       {/* Input Area */}
       <footer className="p-4 md:p-6 bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800">
-        <div className="max-w-4xl mx-auto flex gap-3 items-end">
-          <div className="flex flex-col gap-2">
+        <div className="max-w-4xl mx-auto relative">
+          {/* Magic Menu Popover */}
+          <AnimatePresence>
+            {isMenuOpen && (
+              <motion.div
+                initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                className="absolute bottom-full left-0 mb-4 p-2 bg-white dark:bg-slate-800 rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-700 flex gap-2 z-30"
+              >
+                <button
+                  onClick={() => { toggleLiveMode(); setIsMenuOpen(false); }}
+                  className={`p-4 rounded-2xl transition-all flex flex-col items-center justify-center gap-1 min-w-[70px] ${
+                    isLiveActive 
+                      ? 'bg-red-600 text-white animate-pulse' 
+                      : 'bg-slate-50 dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:bg-red-50 dark:hover:bg-red-900/20 hover:text-red-600'
+                  }`}
+                >
+                  <Bot className="w-6 h-6" />
+                  <span className="text-[10px] font-black uppercase">Live</span>
+                </button>
+
+                <button
+                  onClick={() => {
+                    if (!input.trim()) {
+                      setInput('Buat foto astronot naik kuda di bulan');
+                    } else {
+                      handleSend(`Buat foto ${input}`);
+                    }
+                    setIsMenuOpen(false);
+                  }}
+                  className="p-4 rounded-2xl transition-all flex flex-col items-center justify-center gap-1 min-w-[70px] bg-slate-50 dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:bg-purple-50 dark:hover:bg-purple-900/20 hover:text-purple-600"
+                >
+                  <ImageIcon className="w-6 h-6" />
+                  <span className="text-[10px] font-black uppercase">Foto</span>
+                </button>
+
+                <button
+                  onClick={() => { toggleListening(); setIsMenuOpen(false); }}
+                  className={`p-4 rounded-2xl transition-all flex flex-col items-center justify-center gap-1 min-w-[70px] ${
+                    isListening 
+                      ? 'bg-red-500 text-white animate-pulse' 
+                      : 'bg-slate-50 dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 hover:text-indigo-600'
+                  }`}
+                >
+                  {isListening ? <MicOff className="w-6 h-6" /> : <Mic className="w-6 h-6" />}
+                  <span className="text-[10px] font-black uppercase">Mic</span>
+                </button>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          <div className="flex gap-3 items-end">
             <button
-              onClick={toggleLiveMode}
-              className={`p-4 rounded-2xl transition-all shadow-md flex flex-col items-center justify-center gap-1 ${
-                isLiveActive 
-                  ? 'bg-red-600 text-white animate-pulse' 
-                  : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 hover:bg-red-50 dark:hover:bg-red-900/20 hover:text-red-600'
-              }`}
-              title={isLiveActive ? "Matikan Live Mode" : "Aktifkan Live Mode"}
-            >
-              <Bot className="w-6 h-6" />
-              <span className="text-[8px] font-black uppercase">Live</span>
-            </button>
-            <button
-              onClick={() => {
-                if (!input.trim()) {
-                  setInput('Buat foto astronot naik kuda di bulan');
-                } else {
-                  handleSend(`Buat foto ${input}`);
-                }
-              }}
-              className="p-4 rounded-2xl transition-all shadow-md flex flex-col items-center justify-center gap-1 bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 hover:bg-purple-50 dark:hover:bg-purple-900/20 hover:text-purple-600"
-              title="Buat Foto AI"
-            >
-              <ImageIcon className="w-6 h-6" />
-              <span className="text-[8px] font-black uppercase">Foto</span>
-            </button>
-            <button
-              onClick={toggleListening}
-              className={`p-4 rounded-2xl transition-all shadow-md flex flex-col items-center justify-center gap-1 ${
-                isListening 
-                  ? 'bg-red-500 text-white animate-pulse' 
-                  : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 hover:text-indigo-600'
-              }`}
-              title={isListening ? "Berhenti Mendengarkan" : "Gunakan Suara"}
-            >
-              {isListening ? <MicOff className="w-6 h-6" /> : <Mic className="w-6 h-6" />}
-              <span className="text-[8px] font-black uppercase">Mic</span>
-            </button>
-          </div>
-          
-          <div className="flex-1 relative">
-            <textarea
-              rows={1}
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && !e.shiftKey) {
-                  e.preventDefault();
-                  handleSend();
-                }
-              }}
-              placeholder="Tanyakan PR atau materi pelajaran..."
-              className="w-full p-4 pr-14 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl focus:outline-none focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 dark:focus:border-indigo-400 transition-all resize-none max-h-32 shadow-inner font-medium text-slate-800 dark:text-slate-100"
-            />
-            <button
-              onClick={() => handleSend()}
-              disabled={!input.trim() || isLoading}
-              className={`absolute right-2 bottom-2 p-2.5 rounded-xl transition-all ${
-                !input.trim() || isLoading 
-                  ? 'text-slate-300 dark:text-slate-600 bg-slate-100 dark:bg-slate-700' 
-                  : 'text-white bg-indigo-600 hover:bg-indigo-700 shadow-lg shadow-indigo-100 dark:shadow-none active:scale-95'
+              onClick={() => setIsMenuOpen(!isMenuOpen)}
+              className={`p-4 rounded-2xl transition-all shadow-lg flex items-center justify-center ${
+                isMenuOpen 
+                  ? 'bg-slate-800 dark:bg-white text-white dark:text-slate-900 rotate-45' 
+                  : 'bg-indigo-600 text-white hover:bg-indigo-700'
               }`}
             >
-              <Send className="w-5 h-5" />
+              <Plus className="w-6 h-6" />
             </button>
+
+            <div className="flex-1 relative">
+              <textarea
+                rows={1}
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    handleSend();
+                  }
+                }}
+                placeholder="Tanyakan PR atau materi pelajaran..."
+                className="w-full p-4 pr-14 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl focus:outline-none focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 dark:focus:border-indigo-400 transition-all resize-none max-h-32 shadow-inner font-medium text-slate-800 dark:text-slate-100"
+              />
+              <button
+                onClick={() => handleSend()}
+                disabled={!input.trim() || isLoading}
+                className={`absolute right-2 bottom-2 p-2.5 rounded-xl transition-all ${
+                  !input.trim() || isLoading 
+                    ? 'text-slate-300 dark:text-slate-600 bg-slate-100 dark:bg-slate-700' 
+                    : 'text-white bg-indigo-600 hover:bg-indigo-700 shadow-lg shadow-indigo-100 dark:shadow-none active:scale-95'
+                }`}
+              >
+                <Send className="w-5 h-5" />
+              </button>
+            </div>
           </div>
         </div>
         <p className="text-[10px] text-center text-slate-400 dark:text-slate-500 mt-3 font-bold uppercase tracking-widest">
