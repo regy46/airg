@@ -32,6 +32,7 @@ interface Message {
   timestamp: Date;
   image?: string;
   groundingChunks?: any[];
+  location?: { lat: number; lng: number; accuracy?: number };
 }
 
 interface QuizViewProps {
@@ -350,7 +351,7 @@ export default function App() {
   const [pdfContent, setPdfContent] = useState<string | null>(null);
   const [pdfFileName, setPdfFileName] = useState<string | null>(null);
   const [isExtractingPdf, setIsExtractingPdf] = useState(false);
-  const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
+  const [userLocation, setUserLocation] = useState<{ lat: number; lng: number; accuracy?: number } | null>(null);
   const [isLocating, setIsLocating] = useState(false);
   const [locationError, setLocationError] = useState<string | null>(null);
 
@@ -748,7 +749,7 @@ export default function App() {
     }
   };
 
-  const getCurrentLocation = (): Promise<{ lat: number; lng: number } | null> => {
+  const getCurrentLocation = (): Promise<{ lat: number; lng: number; accuracy: number } | null> => {
     setIsLocating(true);
     setLocationError(null);
     return new Promise((resolve) => {
@@ -764,7 +765,8 @@ export default function App() {
         (position) => {
           const loc = {
             lat: position.coords.latitude,
-            lng: position.coords.longitude
+            lng: position.coords.longitude,
+            accuracy: position.coords.accuracy
           };
           setUserLocation(loc);
           setIsLocating(false);
@@ -804,6 +806,7 @@ export default function App() {
       role: 'user',
       content: pdfContent ? `[File: ${pdfFileName}]\n\n${messageText}` : messageText,
       timestamp: new Date(),
+      location: userLocation ? { ...userLocation } : undefined,
     };
 
     setMessages(prev => [...prev, userMessage]);
@@ -836,12 +839,16 @@ export default function App() {
         // Use cached location if available to avoid delay
         if (userLocation) {
           currentCoords = userLocation;
-          locationContext = `LOKASI USER SAAT INI (SANGAT PENTING): Latitude ${userLocation.lat}, Longitude ${userLocation.lng}. 
-          Gunakan koordinat ini sebagai titik pusat (0,0) untuk semua pencarian "dekat saya" atau "di sekitar sini". 
-          WAJIB berikan hasil yang berada dalam radius maksimal 2-5km dari titik ini. 
-          Jika tidak ada hasil di radius tersebut, beri tahu user bahwa tidak ada yang sangat dekat, jangan asal kasih lokasi di kota lain.`;
+          locationContext = `[SANGAT PENTING - LOKASI GPS USER]
+          LATITUDE: ${userLocation.lat}
+          LONGITUDE: ${userLocation.lng}
+          AKURASI: ${userLocation.accuracy?.toFixed(0)}m
+          
+          INSTRUKSI: Gunakan koordinat di atas sebagai titik pusat pencarian. 
+          JANGAN memberikan hasil di luar radius 2km. 
+          HASIL HARUS RELEVAN DENGAN KOORDINAT TERSEBUT.`;
         } else {
-          // Add a temporary system message to show we are getting location
+          // ... fetch location ...
           const locId = Date.now();
           setMessages(prev => [...prev, {
             role: 'model',
@@ -852,15 +859,18 @@ export default function App() {
 
           const loc = await getCurrentLocation();
           
-          // Remove the temporary message
           setMessages(prev => prev.filter((m: any) => m.id !== locId));
 
           if (loc) {
             currentCoords = loc;
-            locationContext = `LOKASI USER SAAT INI (SANGAT PENTING): Latitude ${loc.lat}, Longitude ${loc.lng}. 
-            Gunakan koordinat ini sebagai titik pusat (0,0) untuk semua pencarian "dekat saya" atau "di sekitar sini". 
-            WAJIB berikan hasil yang berada dalam radius maksimal 2-5km dari titik ini. 
-            Jika tidak ada hasil di radius tersebut, beri tahu user bahwa tidak ada yang sangat dekat, jangan asal kasih lokasi di kota lain.`;
+            locationContext = `[SANGAT PENTING - LOKASI GPS USER]
+            LATITUDE: ${loc.lat}
+            LONGITUDE: ${loc.lng}
+            AKURASI: ${loc.accuracy.toFixed(0)}m
+            
+            INSTRUKSI: Gunakan koordinat di atas sebagai titik pusat pencarian. 
+            JANGAN memberikan hasil di luar radius 2km. 
+            HASIL HARUS RELEVAN DENGAN KOORDINAT TERSEBUT.`;
           } else {
             console.warn("Could not get location, proceeding without it.");
             locationContext = "PERINGATAN: Gagal mendapatkan lokasi GPS pengguna. Beritahu pengguna bahwa lo gak tau lokasi mereka sekarang dan minta mereka aktifin GPS atau sebutin nama daerahnya.";
@@ -871,7 +881,7 @@ export default function App() {
       const finalPrompt = pdfContent 
         ? `Gunakan materi PDF berikut sebagai referensi untuk menjawab pertanyaan saya: \n\n--- MATERI PDF ---\n${pdfContent}\n--- AKHIR MATERI ---\n\nPertanyaan saya: ${messageText}${locationContext ? `\n\n[${locationContext}]` : ''}`
         : locationContext 
-          ? `[KONTEKS LOKASI: ${locationContext}]\n\nPertanyaan: ${messageText}`
+          ? `${locationContext}\n\nPertanyaan User: ${messageText}`
           : messageText;
 
       // Clear PDF after sending
@@ -894,12 +904,13 @@ export default function App() {
 
       const locationInstruction = currentCoords 
         ? `\n\n[SANGAT PENTING - INSTRUKSI LOKASI]
-           User berada di koordinat Latitude: ${currentCoords.lat}, Longitude: ${currentCoords.lng}.
-           Gunakan data ini sebagai TITIK PUSAT pencarian di Google Maps.
+           User berada di koordinat Latitude: ${currentCoords.lat}, Longitude: ${currentCoords.lng} (Akurasi: ${currentCoords.accuracy?.toFixed(0)}m).
+           Gunakan data ini sebagai TITIK PUSAT (ANCHOR) pencarian di Google Maps.
            WAJIB prioritaskan hasil yang PALING DEKAT secara geografis (radius < 2km).
            Jika user tanya "kafe terdekat", berikan yang benar-benar paling dekat dari koordinat tersebut.
            Jangan memberikan lokasi di kota lain atau yang jauh kecuali user minta secara spesifik.
-           Sebutkan nama jalan atau daerahnya agar user yakin itu akurat.`
+           Sebutkan nama jalan atau daerahnya agar user yakin itu akurat.
+           Jika akurasi rendah (>100m), beri tahu user bahwa lokasi mungkin kurang pas karena kendala GPS.`
         : "";
 
       const systemInstruction = baseSystemInstruction + locationInstruction;
@@ -1296,9 +1307,16 @@ export default function App() {
                         : 'bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 border border-slate-100 dark:border-slate-700 rounded-tl-none'
                     }`}>
                       {msg.role === 'model' && msg.groundingChunks && msg.groundingChunks.some(c => c.maps) && (
-                        <div className="flex items-center gap-1.5 mb-3 px-2 py-1 bg-green-50 dark:bg-green-900/20 border border-green-100 dark:border-green-900/30 rounded-xl w-fit">
-                          <MapPin className="w-3 h-3 text-green-600 dark:text-green-400" />
-                          <span className="text-[10px] font-black text-green-600 dark:text-green-400 uppercase tracking-wider">Lokasi Akurat</span>
+                        <div className="flex flex-col gap-1 mb-3">
+                          <div className="flex items-center gap-1.5 px-2 py-1 bg-green-50 dark:bg-green-900/20 border border-green-100 dark:border-green-900/30 rounded-xl w-fit">
+                            <MapPin className="w-3 h-3 text-green-600 dark:text-green-400" />
+                            <span className="text-[10px] font-black text-green-600 dark:text-green-400 uppercase tracking-wider">Lokasi Akurat</span>
+                          </div>
+                          {msg.location && (
+                            <span className="text-[8px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">
+                              Digunakan: {msg.location.lat.toFixed(4)}, {msg.location.lng.toFixed(4)}
+                            </span>
+                          )}
                         </div>
                       )}
                       <p className="whitespace-pre-wrap leading-relaxed text-sm md:text-base font-medium">{msg.content}</p>
@@ -1400,7 +1418,9 @@ export default function App() {
             <div className="flex items-center gap-2 px-4 py-2 bg-white/50 dark:bg-slate-900/50 rounded-full border border-slate-100 dark:border-slate-800 shadow-sm">
               <div className={`w-1.5 h-1.5 rounded-full ${userLocation ? 'bg-green-500 animate-pulse' : 'bg-slate-300 dark:bg-slate-700'}`} />
               <span className="text-[9px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-[0.2em]">
-                {userLocation ? `Berdasarkan lokasi lo: ${userLocation.lat.toFixed(4)}, ${userLocation.lng.toFixed(4)}` : 'Lokasi lo belum kebaca nih'}
+                {userLocation 
+                  ? `Lokasi: ${userLocation.lat.toFixed(4)}, ${userLocation.lng.toFixed(4)} • Akurasi: ${userLocation.accuracy?.toFixed(0)}m` 
+                  : 'Lokasi lo belum kebaca nih'}
               </span>
               <button 
                 onClick={() => getCurrentLocation()}
@@ -1411,7 +1431,9 @@ export default function App() {
               </button>
             </div>
             <p className="text-[8px] text-slate-400 dark:text-slate-600 font-bold uppercase tracking-widest">
-              AI R.G menggunakan GPS untuk jawaban yang lebih akurat
+              {userLocation && userLocation.accuracy && userLocation.accuracy > 100 
+                ? '⚠️ Akurasi rendah. Coba aktifin GPS di HP lo biar lebih pas.' 
+                : 'AI R.G menggunakan GPS untuk jawaban yang lebih akurat'}
             </p>
           </div>
         </main>
