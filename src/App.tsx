@@ -781,7 +781,7 @@ export default function App() {
           setIsLocating(false);
           resolve(null);
         },
-        { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }
+        { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
       );
     });
   };
@@ -893,10 +893,13 @@ export default function App() {
            Gunakan Google Search untuk memberikan informasi terbaru dan akurat jika diperlukan.`;
 
       const locationInstruction = currentCoords 
-        ? `\n\nPENTING: Pengguna sedang menanyakan hal terkait lokasi/cuaca di sekitarnya. 
-           Gunakan koordinat Latitude: ${currentCoords.lat}, Longitude: ${currentCoords.lng} sebagai titik pusat pencarian.
-           Jika mencari tempat (kafe, dll), prioritaskan hasil yang jaraknya paling dekat (radius < 5km) dari koordinat tersebut.
-           Jangan memberikan rekomendasi di kota lain kecuali diminta.`
+        ? `\n\n[SANGAT PENTING - INSTRUKSI LOKASI]
+           User berada di koordinat Latitude: ${currentCoords.lat}, Longitude: ${currentCoords.lng}.
+           Gunakan data ini sebagai TITIK PUSAT pencarian di Google Maps.
+           WAJIB prioritaskan hasil yang PALING DEKAT secara geografis (radius < 2km).
+           Jika user tanya "kafe terdekat", berikan yang benar-benar paling dekat dari koordinat tersebut.
+           Jangan memberikan lokasi di kota lain atau yang jauh kecuali user minta secara spesifik.
+           Sebutkan nama jalan atau daerahnya agar user yakin itu akurat.`
         : "";
 
       const systemInstruction = baseSystemInstruction + locationInstruction;
@@ -1391,6 +1394,26 @@ export default function App() {
           )}
 
           <div ref={messagesEndRef} />
+
+          {/* Location Footer - Gemini Style */}
+          <div className="mt-8 mb-4 flex flex-col items-center justify-center gap-2 opacity-60 hover:opacity-100 transition-opacity">
+            <div className="flex items-center gap-2 px-4 py-2 bg-white/50 dark:bg-slate-900/50 rounded-full border border-slate-100 dark:border-slate-800 shadow-sm">
+              <div className={`w-1.5 h-1.5 rounded-full ${userLocation ? 'bg-green-500 animate-pulse' : 'bg-slate-300 dark:bg-slate-700'}`} />
+              <span className="text-[9px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-[0.2em]">
+                {userLocation ? `Berdasarkan lokasi lo: ${userLocation.lat.toFixed(4)}, ${userLocation.lng.toFixed(4)}` : 'Lokasi lo belum kebaca nih'}
+              </span>
+              <button 
+                onClick={() => getCurrentLocation()}
+                disabled={isLocating}
+                className="ml-2 text-[9px] font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-widest hover:text-indigo-700 transition-colors disabled:opacity-50"
+              >
+                {isLocating ? 'Mencari...' : (userLocation ? 'Perbarui' : 'Aktifkan')}
+              </button>
+            </div>
+            <p className="text-[8px] text-slate-400 dark:text-slate-600 font-bold uppercase tracking-widest">
+              AI R.G menggunakan GPS untuk jawaban yang lebih akurat
+            </p>
+          </div>
         </main>
       ) : (
         <QuizView 
