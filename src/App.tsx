@@ -4,7 +4,7 @@
  */
 
 import { useState, useRef, useEffect } from 'react';
-import { Send, Bot, User, Loader2, Sparkles, Trash2, Copy, Check, Mic, MicOff, Volume2, GraduationCap, Pause, Play, Square, VolumeX, Image as ImageIcon, Plus, X, MoreVertical } from 'lucide-react';
+import { Send, Bot, User, Loader2, Sparkles, Trash2, Copy, Check, Mic, MicOff, Volume2, GraduationCap, Pause, Play, Square, VolumeX, Plus, X, MoreVertical, Search, MapPin } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { GoogleGenAI, Modality, ThinkingLevel } from '@google/genai';
 
@@ -35,12 +35,10 @@ export default function App() {
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [needsCustomKey, setNeedsCustomKey] = useState(false);
   const [copiedId, setCopiedId] = useState<number | null>(null);
   const [isListening, setIsListening] = useState(false);
   const [isLiveActive, setIsLiveActive] = useState(false);
   const [isLiveListening, setIsLiveListening] = useState(false);
-  const [isImageGenerating, setIsImageGenerating] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [isAudioLoading, setIsAudioLoading] = useState(false);
@@ -427,20 +425,6 @@ export default function App() {
     setIsLoading(true);
     setError(null);
 
-    // Image generation detection - refined to avoid false positives
-    // Requires an action word AND an image-related noun with strict word boundaries
-    const actionWords = ['buat', 'bikin', 'generate', 'lukis', 'render', 'draw', 'create', 'tampilkan', 'tunjukin', 'visualisasi', 'buatkan', 'bikinin', 'buatin', 'tampilin'];
-    const imageNouns = ['foto', 'gambar', 'photo', 'image', 'lukisan', 'poto', 'potret', 'potoin', 'fotoin', 'gambarin'];
-    
-    const hasAction = actionWords.some(word => new RegExp(`\\b${word}\\b`, 'i').test(messageText));
-    const hasImageNoun = imageNouns.some(word => new RegExp(`\\b${word}\\b`, 'i').test(messageText));
-    
-    // Also catch specific combined words like "fotoin", "gambarin"
-    const specificWords = ['fotoin', 'potoin', 'gambarin', 'bikinin foto', 'buatkan foto', 'buatin foto'];
-    const hasSpecific = specificWords.some(word => new RegExp(`\\b${word}\\b`, 'i').test(messageText));
-
-    const isImagePrompt = (hasAction && hasImageNoun) || hasSpecific;
-
     try {
       const apiKey = getApiKey();
       if (!apiKey || apiKey === 'undefined' || apiKey === '') {
@@ -448,94 +432,6 @@ export default function App() {
       }
 
       const ai = new GoogleGenAI({ apiKey });
-
-      // Function to handle image generation
-      const generateImage = async (prompt: string) => {
-        setIsImageGenerating(true);
-        setIsLoading(true); // Keep loading true for the whole process
-        
-        const modelsToTry = ['gemini-3.1-flash-image-preview', 'gemini-2.5-flash-image'];
-        let lastError = null;
-
-        for (const modelName of modelsToTry) {
-          try {
-            // Clean the prompt: remove common "request" words
-            const cleanedPrompt = prompt
-              .replace(/\b(buatkan|buat|bikin|bikinin|tampilkan|tampilin|generate|lukis|lukiskan|gambar|gambarin|poto|foto|photo|image|render|draw|create|kan|in|tolong|dong|plis|please|visualisasikan|tunjukin)\b/gi, '')
-              .replace(/\s+/g, ' ')
-              .trim();
-            
-            const finalPrompt = cleanedPrompt || prompt;
-
-            const response = await ai.models.generateContent({
-              model: modelName,
-              contents: {
-                parts: [{ text: `High quality artistic image of: ${finalPrompt}. Style: photorealistic, detailed, 4k, vibrant colors, cinematic lighting.` }],
-              },
-              config: {
-                imageConfig: {
-                  aspectRatio: "1:1",
-                  ...(modelName.includes('3.1') ? { imageSize: "1K" } : {})
-                }
-              }
-            });
-
-            let generatedImageBase64 = '';
-            for (const part of response.candidates?.[0]?.content?.parts || []) {
-              if (part.inlineData) {
-                generatedImageBase64 = `data:image/png;base64,${part.inlineData.data}`;
-                break;
-              }
-            }
-
-            if (generatedImageBase64) {
-              const aiMessage: Message = {
-                role: 'model',
-                content: `Nih bro, foto "${finalPrompt}" udah jadi pake model ${modelName}! Gimana menurut lo?`,
-                timestamp: new Date(),
-                image: generatedImageBase64
-              };
-              setMessages(prev => [...prev, aiMessage]);
-              if (isVoice) speakText(aiMessage.content);
-              setIsImageGenerating(false);
-              setIsLoading(false);
-              return true;
-            }
-          } catch (err: any) {
-            console.error(`Error with model ${modelName}:`, err);
-            lastError = err;
-            // If it's a 403, we try the next model. If it's something else like safety, we might want to stop.
-            const errorMsg = err?.message || String(err);
-            if (errorMsg.includes('safety') || errorMsg.includes('blocked')) {
-              break; // Safety blocks usually apply to all models
-            }
-          }
-        }
-
-        // If we reach here, all models failed
-        try {
-          const errorMsg = lastError?.message || String(lastError);
-          if (errorMsg.includes('403') || errorMsg.includes('permission')) {
-            setError("Waduh bro, API Key lo ditolak (403 Permission Denied). Model ini butuh API Key berbayar dari Google Cloud. Klik tombol di bawah buat pilih Key lo.");
-            setNeedsCustomKey(true);
-          } else if (errorMsg.includes('safety') || errorMsg.includes('blocked')) {
-            setError("Sori bro, prompt lo diblokir sistem keamanan AI. Coba ganti kata-katanya biar lebih sopan atau nggak sensitif ya!");
-          } else {
-            setError(`Gagal bikin foto: ${errorMsg}. Coba lagi ya bro!`);
-          }
-        } finally {
-          setIsImageGenerating(false);
-          setIsLoading(false);
-        }
-        return false;
-      };
-
-      if (isImagePrompt) {
-        const success = await generateImage(messageText);
-        if (success) return;
-        // If image gen fails, we've already set the error, so we stop here
-        return;
-      }
 
       const history = messages.map(msg => ({
         role: msg.role,
@@ -548,11 +444,12 @@ export default function App() {
         contents: [...history, { role: 'user', parts: [{ text: messageText }] }],
         config: {
           thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
-          systemInstruction: `Anda adalah AI R.G, asisten pendidikan cerdas. JAWAB SINGKAT & INSTAN.
+          tools: [{ googleSearch: {} }, { googleMaps: {} }],
+          systemInstruction: `Anda adalah AI R.G, asisten pendidikan cerdas yang kini dilengkapi dengan fitur Google Search dan Google Maps.
           Waktu saat ini: ${new Date().toLocaleString('id-ID', { timeZone: 'Asia/Jakarta', dateStyle: 'full', timeStyle: 'long' })}.
           Karakter: Cerdas, ramah, gaul Jakarta (gue, lo, nih, deh). 
           Berikan jawaban 1-2 kalimat saja agar cepat. Langsung ke intinya.
-          PENTING: Jika pengguna meminta gambar/foto, JANGAN mencoba menggunakan tool JSON atau DALL-E. Cukup katakan "Oke bro, gue bikinin fotonya ya!" dan sistem akan menanganinya.`,
+          Gunakan Google Search untuk info terbaru dan Google Maps untuk lokasi atau tempat jika diperlukan.`,
         }
       });
 
@@ -571,20 +468,6 @@ export default function App() {
         if (currentAbortController.signal.aborted) return;
         const chunkText = chunk.text;
         if (chunkText) {
-          // Detect if the model is trying to use a tool or requesting an image
-          if (chunkText.includes('dalle.text2im') || chunkText.includes('action_input') || chunkText.includes('bikinin fotonya') || chunkText.includes('buatin fotonya')) {
-            // If the model hallucinations a tool call or promises an image, we catch it
-            const promptMatch = chunkText.match(/"prompt":\s*"([^"]+)"/);
-            const extractedPrompt = promptMatch ? promptMatch[1] : messageText;
-            
-            // Remove the placeholder message we just added
-            setMessages(prev => prev.slice(0, -1));
-            
-            await generateImage(extractedPrompt);
-            setIsLoading(false);
-            return;
-          }
-
           fullText += chunkText;
           
           // Optimization: Start speaking as soon as the first sentence is ready
@@ -849,7 +732,7 @@ export default function App() {
           ))}
         </AnimatePresence>
 
-        {(isLoading || isImageGenerating) && (
+        {isLoading && (
           <motion.div 
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -862,32 +745,15 @@ export default function App() {
                 <div className="w-2.5 h-2.5 bg-indigo-600 dark:bg-indigo-400 rounded-full animate-bounce" />
               </div>
               <span className="text-xs font-black text-slate-500 dark:text-slate-400 uppercase tracking-widest">
-                {isImageGenerating ? 'AI R.G sedang melukis foto...' : 'AI R.G sedang menganalisis...'}
+                AI R.G sedang menganalisis...
               </span>
             </div>
           </motion.div>
         )}
 
         {error && (
-          <div className="p-4 bg-red-50 dark:bg-red-900/20 border border-red-100 dark:border-red-900/50 text-red-600 dark:text-red-400 rounded-2xl text-sm text-center font-bold flex flex-col items-center gap-3">
-            <span>{error}</span>
-            {needsCustomKey && (
-              <button
-                onClick={async () => {
-                  try {
-                    await (window as any).aistudio?.openSelectKey();
-                    setNeedsCustomKey(false);
-                    setError(null);
-                  } catch (e) {
-                    console.error('Failed to open key selector:', e);
-                  }
-                }}
-                className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-full text-xs font-bold transition-colors flex items-center gap-2"
-              >
-                <Sparkles className="w-3.5 h-3.5" />
-                Pilih API Key Berbayar
-              </button>
-            )}
+          <div className="p-4 bg-red-50 dark:bg-red-900/20 border border-red-100 dark:border-red-900/50 text-red-600 dark:text-red-400 rounded-2xl text-sm text-center font-bold">
+            {error}
           </div>
         )}
         <div ref={messagesEndRef} />
@@ -955,16 +821,28 @@ export default function App() {
 
                 <button
                   onClick={() => {
-                    setInput('buat foto ');
+                    setInput('cari info tentang ');
                     setIsMenuOpen(false);
-                    // Focus the textarea after setting input
                     const textarea = document.querySelector('textarea');
                     if (textarea) textarea.focus();
                   }}
-                  className="p-4 rounded-2xl transition-all flex flex-col items-center justify-center gap-1 min-w-[70px] bg-slate-50 dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:bg-purple-50 dark:hover:bg-purple-900/20 hover:text-purple-600"
+                  className="p-4 rounded-2xl transition-all flex flex-col items-center justify-center gap-1 min-w-[70px] bg-slate-50 dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:bg-blue-50 dark:hover:bg-blue-900/20 hover:text-blue-600"
                 >
-                  <ImageIcon className="w-6 h-6" />
-                  <span className="text-[10px] font-black uppercase">Foto</span>
+                  <Search className="w-6 h-6" />
+                  <span className="text-[10px] font-black uppercase">Cari</span>
+                </button>
+
+                <button
+                  onClick={() => {
+                    setInput('lokasi terdekat ');
+                    setIsMenuOpen(false);
+                    const textarea = document.querySelector('textarea');
+                    if (textarea) textarea.focus();
+                  }}
+                  className="p-4 rounded-2xl transition-all flex flex-col items-center justify-center gap-1 min-w-[70px] bg-slate-50 dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:bg-green-50 dark:hover:bg-green-900/20 hover:text-green-600"
+                >
+                  <MapPin className="w-6 h-6" />
+                  <span className="text-[10px] font-black uppercase">Lokasi</span>
                 </button>
 
                 <button
@@ -990,7 +868,8 @@ export default function App() {
               className="flex gap-2 mb-3 overflow-x-auto pb-1 no-scrollbar"
             >
               {[
-                { label: 'Bikin Foto 🎨', text: 'buat foto ' },
+                { label: 'Cari di Internet 🌐', text: 'cari info tentang ' },
+                { label: 'Cari Lokasi 📍', text: 'lokasi terdekat ' },
                 { label: 'Tanya Tugas 📚', text: 'jelasin tentang ' },
                 { label: 'Ngobrol Santai 💬', text: 'halo rg, apa kabar?' },
                 { label: 'Cek Cuaca 🌤️', text: 'cuaca hari ini gimana?' }

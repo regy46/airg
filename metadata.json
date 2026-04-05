@@ -1,5 +1,5 @@
 {
   "name": "AI R.G",
   "description": "Asisten AI Pendidikan yang cerdas dan interaktif untuk siswa di kelas.",
-  "requestFramePermissions": ["microphone"]
+  "requestFramePermissions": ["microphone", "geolocation"]
 }
