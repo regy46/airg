@@ -4,7 +4,7 @@
  */
 
 import { useState, useRef, useEffect } from 'react';
-import { Send, Bot, User, Loader2, Sparkles, Trash2, Copy, Check, Mic, MicOff, Volume2, GraduationCap, Pause, Play, Square, VolumeX } from 'lucide-react';
+import { Send, Bot, User, Loader2, Sparkles, Trash2, Copy, Check, Mic, MicOff, Volume2, GraduationCap, Pause, Play, Square, VolumeX, Image as ImageIcon } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { GoogleGenAI, Modality, ThinkingLevel } from '@google/genai';
 
@@ -27,6 +27,7 @@ interface Message {
   role: 'user' | 'model';
   content: string;
   timestamp: Date;
+  image?: string;
 }
 
 export default function App() {
@@ -38,6 +39,7 @@ export default function App() {
   const [isListening, setIsListening] = useState(false);
   const [isLiveActive, setIsLiveActive] = useState(false);
   const [isLiveListening, setIsLiveListening] = useState(false);
+  const [isImageGenerating, setIsImageGenerating] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [isAudioLoading, setIsAudioLoading] = useState(false);
   const [micVolume, setMicVolume] = useState(0);
@@ -422,6 +424,9 @@ export default function App() {
     setIsLoading(true);
     setError(null);
 
+    // Image generation detection
+    const isImagePrompt = /buat foto|gambar|generate image|bikin foto|lukis/i.test(messageText);
+
     try {
       const apiKey = getApiKey();
       if (!apiKey || apiKey === 'undefined' || apiKey === '') {
@@ -429,6 +434,50 @@ export default function App() {
       }
 
       const ai = new GoogleGenAI({ apiKey });
+
+      if (isImagePrompt) {
+        setIsImageGenerating(true);
+        try {
+          const response = await ai.models.generateContent({
+            model: 'gemini-2.5-flash-image',
+            contents: {
+              parts: [{ text: `Generate a high quality image based on this prompt: ${messageText}. Style: Vibrant, detailed, and artistic.` }],
+            },
+            config: {
+              imageConfig: {
+                aspectRatio: "1:1"
+              }
+            }
+          });
+
+          let generatedImageBase64 = '';
+          for (const part of response.candidates?.[0]?.content?.parts || []) {
+            if (part.inlineData) {
+              generatedImageBase64 = `data:image/png;base64,${part.inlineData.data}`;
+              break;
+            }
+          }
+
+          if (generatedImageBase64) {
+            const aiMessage: Message = {
+              role: 'model',
+              content: `Nih bro, foto "${messageText}" udah jadi! Gimana menurut lo?`,
+              timestamp: new Date(),
+              image: generatedImageBase64
+            };
+            setMessages(prev => [...prev, aiMessage]);
+            if (isVoice) speakText(aiMessage.content);
+            setIsLoading(false);
+            setIsImageGenerating(false);
+            return;
+          }
+        } catch (imgErr) {
+          console.error('Image Gen Error:', imgErr);
+          // Fallback to text if image fails
+        }
+        setIsImageGenerating(false);
+      }
+
       const history = messages.map(msg => ({
         role: msg.role,
         parts: [{ text: msg.content }]
@@ -680,6 +729,20 @@ export default function App() {
                       : 'bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 border border-slate-100 dark:border-slate-700 rounded-tl-none'
                   }`}>
                     <p className="whitespace-pre-wrap leading-relaxed text-sm md:text-base font-medium">{msg.content}</p>
+                    {msg.image && (
+                      <motion.div 
+                        initial={{ opacity: 0, scale: 0.9 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        className="mt-4 rounded-2xl overflow-hidden border border-white/20 shadow-xl"
+                      >
+                        <img 
+                          src={msg.image} 
+                          alt="Generated AI" 
+                          className="w-full h-auto object-cover max-h-[400px]"
+                          referrerPolicy="no-referrer"
+                        />
+                      </motion.div>
+                    )}
                     <div className={`flex items-center gap-3 mt-3 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                       <span className={`text-[10px] font-bold uppercase tracking-tighter opacity-60 ${msg.role === 'user' ? 'text-indigo-100' : 'text-slate-400 dark:text-slate-500'}`}>
                         {msg.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
@@ -712,7 +775,7 @@ export default function App() {
           ))}
         </AnimatePresence>
 
-        {isLoading && (
+        {(isLoading || isImageGenerating) && (
           <motion.div 
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -724,7 +787,9 @@ export default function App() {
                 <div className="w-2.5 h-2.5 bg-indigo-600 dark:bg-indigo-400 rounded-full animate-bounce [animation-delay:-0.15s]" />
                 <div className="w-2.5 h-2.5 bg-indigo-600 dark:bg-indigo-400 rounded-full animate-bounce" />
               </div>
-              <span className="text-xs font-black text-slate-500 dark:text-slate-400 uppercase tracking-widest">AI R.G sedang menganalisis...</span>
+              <span className="text-xs font-black text-slate-500 dark:text-slate-400 uppercase tracking-widest">
+                {isImageGenerating ? 'AI R.G sedang melukis foto...' : 'AI R.G sedang menganalisis...'}
+              </span>
             </div>
           </motion.div>
         )}
@@ -788,6 +853,20 @@ export default function App() {
             >
               <Bot className="w-6 h-6" />
               <span className="text-[8px] font-black uppercase">Live</span>
+            </button>
+            <button
+              onClick={() => {
+                if (!input.trim()) {
+                  setInput('Buat foto astronot naik kuda di bulan');
+                } else {
+                  handleSend(`Buat foto ${input}`);
+                }
+              }}
+              className="p-4 rounded-2xl transition-all shadow-md flex flex-col items-center justify-center gap-1 bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 hover:bg-purple-50 dark:hover:bg-purple-900/20 hover:text-purple-600"
+              title="Buat Foto AI"
+            >
+              <ImageIcon className="w-6 h-6" />
+              <span className="text-[8px] font-black uppercase">Foto</span>
             </button>
             <button
               onClick={toggleListening}
