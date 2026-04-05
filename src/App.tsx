@@ -427,7 +427,9 @@ export default function App() {
     setError(null);
 
     // Image generation detection - more robust regex
-    const isImagePrompt = /(buat|bikin|generate|lukis|tampilkan|render).*(foto|gambar|image|lukisan)|gambar|photo/i.test(messageText);
+    const imageKeywords = ['buat', 'bikin', 'generate', 'lukis', 'gambar', 'poto', 'foto', 'photo', 'image', 'render', 'draw', 'create', 'lukiskan', 'gambarin', 'bikinin', 'tampilin', 'potoin', 'fotoin'];
+    const isImagePrompt = imageKeywords.some(word => new RegExp(`\\b${word}\\b`, 'i').test(messageText)) && 
+                         !/\b(siapa|apa|dimana|kapan|kenapa|how|why|who|where|when|mana|apakah)\b/i.test(messageText);
 
     try {
       const apiKey = getApiKey();
@@ -440,10 +442,18 @@ export default function App() {
       if (isImagePrompt) {
         setIsImageGenerating(true);
         try {
+          // Clean the prompt: remove common "request" words to help the image model focus on the subject
+          const cleanedPrompt = messageText
+            .replace(/\b(buatkan|buat|bikin|bikinin|tampilkan|tampilin|generate|lukis|lukiskan|gambar|gambarin|poto|foto|photo|image|render|draw|create|kan|in|tolong|dong|plis|please)\b/gi, '')
+            .replace(/\s+/g, ' ')
+            .trim();
+          
+          const finalPrompt = cleanedPrompt || messageText;
+
           const response = await ai.models.generateContent({
             model: 'gemini-2.5-flash-image',
             contents: {
-              parts: [{ text: `Generate a high quality image based on this prompt: ${messageText}. Style: Vibrant, detailed, and artistic.` }],
+              parts: [{ text: `High quality artistic image of: ${finalPrompt}. Style: photorealistic, detailed, 4k, vibrant colors, cinematic lighting.` }],
             },
             config: {
               imageConfig: {
@@ -892,6 +902,34 @@ export default function App() {
               </motion.div>
             )}
           </AnimatePresence>
+
+          {/* Quick Action Chips */}
+          {!input && !isLoading && (
+            <motion.div 
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="flex gap-2 mb-3 overflow-x-auto pb-1 no-scrollbar"
+            >
+              {[
+                { label: 'Bikin Foto 🎨', text: 'buat foto ' },
+                { label: 'Tanya Tugas 📚', text: 'jelasin tentang ' },
+                { label: 'Ngobrol Santai 💬', text: 'halo rg, apa kabar?' },
+                { label: 'Cek Cuaca 🌤️', text: 'cuaca hari ini gimana?' }
+              ].map((chip, i) => (
+                <button
+                  key={i}
+                  onClick={() => {
+                    setInput(chip.text);
+                    const textarea = document.querySelector('textarea');
+                    if (textarea) textarea.focus();
+                  }}
+                  className="whitespace-nowrap px-4 py-1.5 bg-slate-100 dark:bg-slate-800 hover:bg-indigo-100 dark:hover:bg-indigo-900/30 text-slate-600 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 rounded-full text-xs font-bold transition-all border border-transparent hover:border-indigo-200 dark:hover:border-indigo-800"
+                >
+                  {chip.label}
+                </button>
+              ))}
+            </motion.div>
+          )}
 
           <div className="flex gap-3 items-end">
             <button
