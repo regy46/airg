@@ -351,6 +351,8 @@ export default function App() {
   const [pdfFileName, setPdfFileName] = useState<string | null>(null);
   const [isExtractingPdf, setIsExtractingPdf] = useState(false);
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
+  const [isLocating, setIsLocating] = useState(false);
+  const [locationError, setLocationError] = useState<string | null>(null);
 
   useEffect(() => {
     // Set worker for pdfjs
@@ -747,9 +749,13 @@ export default function App() {
   };
 
   const getCurrentLocation = (): Promise<{ lat: number; lng: number } | null> => {
+    setIsLocating(true);
+    setLocationError(null);
     return new Promise((resolve) => {
       if (!navigator.geolocation) {
         console.warn('Geolocation is not supported by your browser');
+        setLocationError('Browser lo gak dukung GPS nih.');
+        setIsLocating(false);
         resolve(null);
         return;
       }
@@ -761,13 +767,21 @@ export default function App() {
             lng: position.coords.longitude
           };
           setUserLocation(loc);
+          setIsLocating(false);
           resolve(loc);
         },
         (error) => {
           console.error('Geolocation error:', error);
+          let msg = 'Gagal ambil lokasi.';
+          if (error.code === 1) msg = 'Izin lokasi ditolak. Aktifin di browser ya!';
+          else if (error.code === 2) msg = 'Lokasi gak ketemu. Cek GPS lo!';
+          else if (error.code === 3) msg = 'Waktu habis pas cari lokasi.';
+          
+          setLocationError(msg);
+          setIsLocating(false);
           resolve(null);
         },
-        { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }
       );
     });
   };
@@ -812,17 +826,45 @@ export default function App() {
 
       // Detect location/weather intent
       const lowerText = messageText.toLowerCase();
-      const isLocationQuery = /lokasi|tempat|kafe|restoran|dekat|di mana|maps|rute|jarak|makan|minum|kopi|warung|toko|apotek|spbu|bensin|mall|atm|bank/.test(lowerText);
+      const isLocationQuery = /lokasi|tempat|kafe|restoran|dekat|di mana|maps|rute|jarak|makan|minum|kopi|warung|toko|apotek|spbu|bensin|mall|atm|bank|sekarang/.test(lowerText);
       const isWeatherQuery = /cuaca|hujan|panas|dingin|suhu|ramalan/.test(lowerText);
       
       let locationContext = "";
       let currentCoords = userLocation;
 
       if (isLocationQuery || isWeatherQuery) {
-        const loc = await getCurrentLocation();
-        if (loc) {
-          currentCoords = loc;
-          locationContext = `LOKASI GPS AKTIF: Latitude ${loc.lat}, Longitude ${loc.lng}. CARI YANG PALING DEKAT DENGAN TITIK INI. JANGAN CARI DI KOTA LAIN.`;
+        // Use cached location if available to avoid delay
+        if (userLocation) {
+          currentCoords = userLocation;
+          locationContext = `LOKASI USER SAAT INI (SANGAT PENTING): Latitude ${userLocation.lat}, Longitude ${userLocation.lng}. 
+          Gunakan koordinat ini sebagai titik pusat (0,0) untuk semua pencarian "dekat saya" atau "di sekitar sini". 
+          WAJIB berikan hasil yang berada dalam radius maksimal 2-5km dari titik ini. 
+          Jika tidak ada hasil di radius tersebut, beri tahu user bahwa tidak ada yang sangat dekat, jangan asal kasih lokasi di kota lain.`;
+        } else {
+          // Add a temporary system message to show we are getting location
+          const locId = Date.now();
+          setMessages(prev => [...prev, {
+            role: 'model',
+            content: '📍 Sebentar ya, gue cek lokasi lo dulu biar akurat...',
+            timestamp: new Date(),
+            id: locId
+          } as any]);
+
+          const loc = await getCurrentLocation();
+          
+          // Remove the temporary message
+          setMessages(prev => prev.filter((m: any) => m.id !== locId));
+
+          if (loc) {
+            currentCoords = loc;
+            locationContext = `LOKASI USER SAAT INI (SANGAT PENTING): Latitude ${loc.lat}, Longitude ${loc.lng}. 
+            Gunakan koordinat ini sebagai titik pusat (0,0) untuk semua pencarian "dekat saya" atau "di sekitar sini". 
+            WAJIB berikan hasil yang berada dalam radius maksimal 2-5km dari titik ini. 
+            Jika tidak ada hasil di radius tersebut, beri tahu user bahwa tidak ada yang sangat dekat, jangan asal kasih lokasi di kota lain.`;
+          } else {
+            console.warn("Could not get location, proceeding without it.");
+            locationContext = "PERINGATAN: Gagal mendapatkan lokasi GPS pengguna. Beritahu pengguna bahwa lo gak tau lokasi mereka sekarang dan minta mereka aktifin GPS atau sebutin nama daerahnya.";
+          }
         }
       }
 
@@ -1129,6 +1171,26 @@ export default function App() {
         </div>
 
         <div className="flex items-center gap-2">
+          {userLocation ? (
+            <div className="hidden md:flex items-center gap-1.5 px-3 py-1.5 bg-green-50 dark:bg-green-900/20 border border-green-100 dark:border-green-900/30 rounded-full">
+              <div className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse" />
+              <span className="text-[10px] font-black text-green-600 dark:text-green-400 uppercase tracking-widest">GPS Aktif</span>
+            </div>
+          ) : (
+            <button
+              onClick={() => getCurrentLocation()}
+              disabled={isLocating}
+              className={`hidden md:flex items-center gap-1.5 px-3 py-1.5 rounded-full border transition-all ${
+                isLocating 
+                  ? 'bg-slate-50 border-slate-200 text-slate-400 dark:bg-slate-800 dark:border-slate-700' 
+                  : 'bg-indigo-50 border-indigo-100 text-indigo-600 hover:bg-indigo-100 dark:bg-indigo-900/20 dark:border-indigo-800 dark:text-indigo-400'
+              }`}
+            >
+              {isLocating ? <Loader2 className="w-3 h-3 animate-spin" /> : <MapPin className="w-3 h-3" />}
+              <span className="text-[10px] font-black uppercase tracking-widest">Cek Lokasi</span>
+            </button>
+          )}
+
           <button
             onClick={() => setView(view === 'chat' ? 'quiz' : 'chat')}
             className={`p-2 rounded-xl transition-all flex items-center gap-2 font-black text-[10px] uppercase tracking-wider ${
@@ -1158,6 +1220,16 @@ export default function App() {
           </button>
         </div>
       </header>
+
+      {locationError && (
+        <div className="max-w-2xl mx-auto mb-4 p-4 bg-orange-50 dark:bg-orange-900/20 border border-orange-100 dark:border-orange-900/50 text-orange-600 dark:text-orange-400 rounded-2xl text-sm text-center font-bold flex items-center justify-center gap-2">
+          <AlertCircle className="w-4 h-4" />
+          {locationError}
+          <button onClick={() => setLocationError(null)} className="ml-2 p-1 hover:bg-orange-100 dark:hover:bg-orange-800 rounded-full">
+            <X className="w-3 h-3" />
+          </button>
+        </div>
+      )}
 
       {error && (
         <div className="max-w-2xl mx-auto mb-4 p-4 bg-red-50 dark:bg-red-900/20 border border-red-100 dark:border-red-900/50 text-red-600 dark:text-red-400 rounded-2xl text-sm text-center font-bold">
