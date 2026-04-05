@@ -35,6 +35,7 @@ export default function App() {
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [needsCustomKey, setNeedsCustomKey] = useState(false);
   const [copiedId, setCopiedId] = useState<number | null>(null);
   const [isListening, setIsListening] = useState(false);
   const [isLiveActive, setIsLiveActive] = useState(false);
@@ -426,10 +427,19 @@ export default function App() {
     setIsLoading(true);
     setError(null);
 
-    // Image generation detection - more aggressive and handles suffixes
-    const imageKeywords = ['buat', 'bikin', 'generate', 'lukis', 'gambar', 'poto', 'foto', 'photo', 'image', 'render', 'draw', 'create', 'lukiskan', 'gambarin', 'bikinin', 'tampilin', 'potoin', 'fotoin', 'visualisasi', 'tunjukin'];
-    // Use a more flexible regex that doesn't strictly require word boundaries for suffixes
-    const isImagePrompt = imageKeywords.some(word => new RegExp(word, 'i').test(messageText));
+    // Image generation detection - refined to avoid false positives
+    // Requires an action word AND an image-related noun with strict word boundaries
+    const actionWords = ['buat', 'bikin', 'generate', 'lukis', 'render', 'draw', 'create', 'tampilkan', 'tunjukin', 'visualisasi', 'buatkan', 'bikinin', 'buatin', 'tampilin'];
+    const imageNouns = ['foto', 'gambar', 'photo', 'image', 'lukisan', 'poto', 'potret', 'potoin', 'fotoin', 'gambarin'];
+    
+    const hasAction = actionWords.some(word => new RegExp(`\\b${word}\\b`, 'i').test(messageText));
+    const hasImageNoun = imageNouns.some(word => new RegExp(`\\b${word}\\b`, 'i').test(messageText));
+    
+    // Also catch specific combined words like "fotoin", "gambarin"
+    const specificWords = ['fotoin', 'potoin', 'gambarin', 'bikinin foto', 'buatkan foto', 'buatin foto'];
+    const hasSpecific = specificWords.some(word => new RegExp(`\\b${word}\\b`, 'i').test(messageText));
+
+    const isImagePrompt = (hasAction && hasImageNoun) || hasSpecific;
 
     try {
       const apiKey = getApiKey();
@@ -443,51 +453,76 @@ export default function App() {
       const generateImage = async (prompt: string) => {
         setIsImageGenerating(true);
         setIsLoading(true); // Keep loading true for the whole process
-        try {
-          // Clean the prompt: remove common "request" words
-          const cleanedPrompt = prompt
-            .replace(/\b(buatkan|buat|bikin|bikinin|tampilkan|tampilin|generate|lukis|lukiskan|gambar|gambarin|poto|foto|photo|image|render|draw|create|kan|in|tolong|dong|plis|please|visualisasikan|tunjukin)\b/gi, '')
-            .replace(/\s+/g, ' ')
-            .trim();
-          
-          const finalPrompt = cleanedPrompt || prompt;
+        
+        const modelsToTry = ['gemini-3.1-flash-image-preview', 'gemini-2.5-flash-image'];
+        let lastError = null;
 
-          const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash-image',
-            contents: {
-              parts: [{ text: `High quality artistic image of: ${finalPrompt}. Style: photorealistic, detailed, 4k, vibrant colors, cinematic lighting.` }],
-            },
-            config: {
-              imageConfig: {
-                aspectRatio: "1:1"
+        for (const modelName of modelsToTry) {
+          try {
+            // Clean the prompt: remove common "request" words
+            const cleanedPrompt = prompt
+              .replace(/\b(buatkan|buat|bikin|bikinin|tampilkan|tampilin|generate|lukis|lukiskan|gambar|gambarin|poto|foto|photo|image|render|draw|create|kan|in|tolong|dong|plis|please|visualisasikan|tunjukin)\b/gi, '')
+              .replace(/\s+/g, ' ')
+              .trim();
+            
+            const finalPrompt = cleanedPrompt || prompt;
+
+            const response = await ai.models.generateContent({
+              model: modelName,
+              contents: {
+                parts: [{ text: `High quality artistic image of: ${finalPrompt}. Style: photorealistic, detailed, 4k, vibrant colors, cinematic lighting.` }],
+              },
+              config: {
+                imageConfig: {
+                  aspectRatio: "1:1",
+                  ...(modelName.includes('3.1') ? { imageSize: "1K" } : {})
+                }
+              }
+            });
+
+            let generatedImageBase64 = '';
+            for (const part of response.candidates?.[0]?.content?.parts || []) {
+              if (part.inlineData) {
+                generatedImageBase64 = `data:image/png;base64,${part.inlineData.data}`;
+                break;
               }
             }
-          });
 
-          let generatedImageBase64 = '';
-          for (const part of response.candidates?.[0]?.content?.parts || []) {
-            if (part.inlineData) {
-              generatedImageBase64 = `data:image/png;base64,${part.inlineData.data}`;
-              break;
+            if (generatedImageBase64) {
+              const aiMessage: Message = {
+                role: 'model',
+                content: `Nih bro, foto "${finalPrompt}" udah jadi pake model ${modelName}! Gimana menurut lo?`,
+                timestamp: new Date(),
+                image: generatedImageBase64
+              };
+              setMessages(prev => [...prev, aiMessage]);
+              if (isVoice) speakText(aiMessage.content);
+              setIsImageGenerating(false);
+              setIsLoading(false);
+              return true;
+            }
+          } catch (err: any) {
+            console.error(`Error with model ${modelName}:`, err);
+            lastError = err;
+            // If it's a 403, we try the next model. If it's something else like safety, we might want to stop.
+            const errorMsg = err?.message || String(err);
+            if (errorMsg.includes('safety') || errorMsg.includes('blocked')) {
+              break; // Safety blocks usually apply to all models
             }
           }
+        }
 
-          if (generatedImageBase64) {
-            const aiMessage: Message = {
-              role: 'model',
-              content: `Nih bro, foto "${finalPrompt}" udah jadi! Gimana menurut lo?`,
-              timestamp: new Date(),
-              image: generatedImageBase64
-            };
-            setMessages(prev => [...prev, aiMessage]);
-            if (isVoice) speakText(aiMessage.content);
-            return true;
+        // If we reach here, all models failed
+        try {
+          const errorMsg = lastError?.message || String(lastError);
+          if (errorMsg.includes('403') || errorMsg.includes('permission')) {
+            setError("Waduh bro, API Key lo ditolak (403 Permission Denied). Model ini butuh API Key berbayar dari Google Cloud. Klik tombol di bawah buat pilih Key lo.");
+            setNeedsCustomKey(true);
+          } else if (errorMsg.includes('safety') || errorMsg.includes('blocked')) {
+            setError("Sori bro, prompt lo diblokir sistem keamanan AI. Coba ganti kata-katanya biar lebih sopan atau nggak sensitif ya!");
           } else {
-            throw new Error("Model nggak ngasih data gambar nih.");
+            setError(`Gagal bikin foto: ${errorMsg}. Coba lagi ya bro!`);
           }
-        } catch (imgErr) {
-          console.error('Image Gen Error:', imgErr);
-          setError("Aduh sori bro, gagal bikin fotonya. Coba lagi atau ganti prompt-nya ya!");
         } finally {
           setIsImageGenerating(false);
           setIsLoading(false);
@@ -834,8 +869,25 @@ export default function App() {
         )}
 
         {error && (
-          <div className="p-4 bg-red-50 dark:bg-red-900/20 border border-red-100 dark:border-red-900/50 text-red-600 dark:text-red-400 rounded-2xl text-sm text-center font-bold">
-            {error}
+          <div className="p-4 bg-red-50 dark:bg-red-900/20 border border-red-100 dark:border-red-900/50 text-red-600 dark:text-red-400 rounded-2xl text-sm text-center font-bold flex flex-col items-center gap-3">
+            <span>{error}</span>
+            {needsCustomKey && (
+              <button
+                onClick={async () => {
+                  try {
+                    await (window as any).aistudio?.openSelectKey();
+                    setNeedsCustomKey(false);
+                    setError(null);
+                  } catch (e) {
+                    console.error('Failed to open key selector:', e);
+                  }
+                }}
+                className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-full text-xs font-bold transition-colors flex items-center gap-2"
+              >
+                <Sparkles className="w-3.5 h-3.5" />
+                Pilih API Key Berbayar
+              </button>
+            )}
           </div>
         )}
         <div ref={messagesEndRef} />
