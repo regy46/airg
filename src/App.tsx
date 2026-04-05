@@ -284,14 +284,15 @@ export default function App() {
     
     const source = audioContextRef.current.createBufferSource();
     source.buffer = buffer;
-    source.playbackRate.value = 1.15;
+    source.playbackRate.value = 1.0; // Normal speed as requested
     source.connect(audioContextRef.current.destination);
     
     const currentTime = audioContextRef.current.currentTime;
-    const startTime = Math.max(currentTime, nextStartTimeRef.current);
+    // Add a small 50ms lookahead to prevent choppiness/gaps
+    const startTime = Math.max(currentTime + 0.05, nextStartTimeRef.current);
     
     source.start(startTime);
-    nextStartTimeRef.current = startTime + (buffer.duration / 1.15);
+    nextStartTimeRef.current = startTime + buffer.duration;
     
     setIsSpeaking(true);
     audioSourceRef.current = source;
@@ -360,7 +361,7 @@ export default function App() {
         
         const source = audioContextRef.current.createBufferSource();
         source.buffer = buffer;
-        source.playbackRate.value = 1.15; // Speed up voice playback
+        source.playbackRate.value = 1.0; // Normal speed
         source.connect(audioContextRef.current.destination);
         
         source.onended = () => {
@@ -865,11 +866,7 @@ export default function App() {
 
                 <button
                   onClick={() => {
-                    if (!input.trim()) {
-                      setInput('Buat foto astronot naik kuda di bulan');
-                    } else {
-                      handleSend(`Buat foto ${input}`);
-                    }
+                    setInput('buat foto ');
                     setIsMenuOpen(false);
                   }}
                   className="p-4 rounded-2xl transition-all flex flex-col items-center justify-center gap-1 min-w-[70px] bg-slate-50 dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:bg-purple-50 dark:hover:bg-purple-900/20 hover:text-purple-600"
