@@ -11,14 +11,16 @@ import { GoogleGenAI, Modality, ThinkingLevel } from '@google/genai';
 // Initialize Gemini with support for both AI Studio and Vercel/Vite environments
 const getApiKey = () => {
   // In Vite/Vercel, we use import.meta.env.VITE_
-  const viteKey = (import.meta as any).env?.VITE_GEMINI_API_KEY;
+  let viteKey = undefined;
+  try {
+    viteKey = (import.meta as any).env?.VITE_GEMINI_API_KEY;
+  } catch (e) {}
+
   // In AI Studio preview, we use process.env
   let processKey = undefined;
   try {
     processKey = (window as any).process?.env?.GEMINI_API_KEY || (process as any)?.env?.GEMINI_API_KEY;
-  } catch (e) {
-    // process is not defined in some browser environments
-  }
+  } catch (e) {}
   
   return viteKey || processKey || '';
 };
@@ -439,19 +441,33 @@ export default function App() {
       }));
 
       // Use streaming for faster perceived response
-      const result = await ai.models.generateContentStream({
-        model: "gemini-3.1-flash-lite-preview",
-        contents: [...history, { role: 'user', parts: [{ text: messageText }] }],
-        config: {
-          thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
-          tools: [{ googleSearch: {} }, { googleMaps: {} }],
-          systemInstruction: `Anda adalah AI R.G, asisten pendidikan cerdas yang kini dilengkapi dengan fitur Google Search dan Google Maps.
-          Waktu saat ini: ${new Date().toLocaleString('id-ID', { timeZone: 'Asia/Jakarta', dateStyle: 'full', timeStyle: 'long' })}.
-          Karakter: Cerdas, ramah, gaul Jakarta (gue, lo, nih, deh). 
-          Berikan jawaban 1-2 kalimat saja agar cepat. Langsung ke intinya.
-          Gunakan Google Search untuk info terbaru dan Google Maps untuk lokasi atau tempat jika diperlukan.`,
-        }
-      });
+      let result;
+      try {
+        result = await ai.models.generateContentStream({
+          model: "gemini-3-flash-preview",
+          contents: [...history, { role: 'user', parts: [{ text: messageText }] }],
+          config: {
+            tools: [{ googleSearch: {} }],
+            systemInstruction: `Anda adalah AI R.G, asisten pendidikan cerdas yang kini dilengkapi dengan fitur Google Search.
+            Waktu saat ini: ${new Date().toLocaleString('id-ID', { timeZone: 'Asia/Jakarta', dateStyle: 'full', timeStyle: 'long' })}.
+            Karakter: Cerdas, ramah, gaul Jakarta (gue, lo, nih, deh). 
+            Berikan jawaban 1-2 kalimat saja agar cepat. Langsung ke intinya.
+            Gunakan Google Search untuk memberikan informasi terbaru dan akurat jika diperlukan.`,
+          }
+        });
+      } catch (modelErr: any) {
+        console.warn('Primary model failed, falling back to lite:', modelErr);
+        // Fallback to lite if 3-flash is not available
+        result = await ai.models.generateContentStream({
+          model: "gemini-3.1-flash-lite-preview",
+          contents: [...history, { role: 'user', parts: [{ text: messageText }] }],
+          config: {
+            systemInstruction: `Anda adalah AI R.G, asisten pendidikan cerdas. JAWAB SINGKAT & INSTAN.
+            Karakter: Cerdas, ramah, gaul Jakarta (gue, lo, nih, deh). 
+            Berikan jawaban 1-2 kalimat saja agar cepat. Langsung ke intinya.`,
+          }
+        });
+      }
 
       let fullText = '';
       let firstSentenceSpoken = false;
