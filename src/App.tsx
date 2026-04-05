@@ -6,7 +6,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { Send, Bot, User, Loader2, Sparkles, Trash2, Copy, Check, Mic, MicOff, Volume2, GraduationCap, Pause, Play, Square, VolumeX } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { GoogleGenAI, Modality } from '@google/genai';
+import { GoogleGenAI, Modality, ThinkingLevel } from '@google/genai';
 
 // Initialize Gemini with support for both AI Studio and Vercel/Vite environments
 const getApiKey = () => {
@@ -36,8 +36,21 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState<number | null>(null);
   const [isListening, setIsListening] = useState(false);
+  const [isLiveActive, setIsLiveActive] = useState(false);
+  const [isLiveListening, setIsLiveListening] = useState(false);
+  const [isSpeaking, setIsSpeaking] = useState(false);
+  const [isAudioLoading, setIsAudioLoading] = useState(false);
+  const [micVolume, setMicVolume] = useState(0);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const recognitionRef = useRef<any>(null);
+  const liveSessionRef = useRef<any>(null);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const audioSourceRef = useRef<AudioBufferSourceNode | null>(null);
+  const nextStartTimeRef = useRef<number>(0);
+  const micStreamRef = useRef<MediaStream | null>(null);
+  const micProcessorRef = useRef<ScriptProcessorNode | null>(null);
+  const micContextRef = useRef<AudioContext | null>(null);
+  const analyserRef = useRef<AnalyserNode | null>(null);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -73,17 +86,218 @@ export default function App() {
     }
   }, []);
 
-  const [isSpeaking, setIsSpeaking] = useState(false);
-  const [isAudioLoading, setIsAudioLoading] = useState(false);
-  const audioContextRef = useRef<AudioContext | null>(null);
-  const audioSourceRef = useRef<AudioBufferSourceNode | null>(null);
-
   const stopSpeaking = () => {
     if (audioSourceRef.current) {
-      audioSourceRef.current.stop();
+      try {
+        audioSourceRef.current.stop();
+      } catch (e) {}
       audioSourceRef.current = null;
     }
+    nextStartTimeRef.current = 0;
     setIsSpeaking(false);
+  };
+
+  const stopLiveMic = () => {
+    if (micStreamRef.current) {
+      micStreamRef.current.getTracks().forEach(track => track.stop());
+      micStreamRef.current = null;
+    }
+    if (micProcessorRef.current) {
+      micProcessorRef.current.disconnect();
+      micProcessorRef.current = null;
+    }
+    if (micContextRef.current) {
+      micContextRef.current.close();
+      micContextRef.current = null;
+    }
+    setMicVolume(0);
+  };
+
+  const toggleLiveMode = async () => {
+    if (isLiveActive) {
+      if (liveSessionRef.current) {
+        try {
+          liveSessionRef.current.close();
+        } catch (e) {}
+        liveSessionRef.current = null;
+      }
+      stopLiveMic();
+      setIsLiveActive(false);
+      setIsLiveListening(false);
+      stopSpeaking();
+      return;
+    }
+
+    setIsLiveActive(true);
+    setError(null);
+    nextStartTimeRef.current = 0;
+
+    try {
+      const apiKey = getApiKey();
+      const aiLive = new GoogleGenAI({ apiKey });
+      
+      if (!audioContextRef.current) {
+        audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+      }
+      
+      if (audioContextRef.current.state === 'suspended') {
+        await audioContextRef.current.resume();
+      }
+
+      const session = await aiLive.live.connect({
+        model: "gemini-3.1-flash-live-preview",
+        config: {
+          responseModalities: [Modality.AUDIO],
+          systemInstruction: "Anda adalah AI R.G. MODE LIVE: JAWAB INSTAN & SANGAT SINGKAT. Gunakan bahasa gaul Jakarta (gue, lo, nih, deh). JANGAN MIKIR. Langsung nyaut aja. Maksimal 10 kata per jawaban. Fokus pada kecepatan, bukan kelengkapan.",
+          thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
+          speechConfig: {
+            voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Zephyr' } }
+          }
+        },
+        callbacks: {
+          onopen: async () => {
+            console.log('Live session opened');
+            setIsLiveListening(true);
+            
+            // Start Mic ONLY after connection is open
+            try {
+              const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+              micStreamRef.current = stream;
+              
+              const micCtx = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 });
+              micContextRef.current = micCtx;
+              
+              const source = micCtx.createMediaStreamSource(stream);
+              const processor = micCtx.createScriptProcessor(1024, 1, 1); // Further reduced buffer size for lower latency
+              micProcessorRef.current = processor;
+
+              const analyser = micCtx.createAnalyser();
+              analyser.fftSize = 256;
+              analyserRef.current = analyser;
+              source.connect(analyser);
+
+              source.connect(processor);
+              processor.connect(micCtx.destination);
+
+              const dataArray = new Uint8Array(analyser.frequencyBinCount);
+              const updateVolume = () => {
+                if (!isLiveActive || !analyserRef.current) return;
+                analyserRef.current.getByteFrequencyData(dataArray);
+                const average = dataArray.reduce((a, b) => a + b) / dataArray.length;
+                setMicVolume(average / 128); // Normalize to 0-1
+                requestAnimationFrame(updateVolume);
+              };
+              updateVolume();
+
+              processor.onaudioprocess = (e) => {
+                if (!liveSessionRef.current) return;
+
+                const inputData = e.inputBuffer.getChannelData(0);
+                const pcmData = new Int16Array(inputData.length);
+                for (let i = 0; i < inputData.length; i++) {
+                  pcmData[i] = Math.max(-1, Math.min(1, inputData[i])) * 0x7FFF;
+                }
+
+                const bytes = new Uint8Array(pcmData.buffer);
+                let binary = '';
+                for (let i = 0; i < bytes.byteLength; i++) {
+                  binary += String.fromCharCode(bytes[i]);
+                }
+                const base64Data = btoa(binary);
+
+                liveSessionRef.current.sendRealtimeInput({
+                  audio: { data: base64Data, mimeType: 'audio/pcm;rate=16000' }
+                });
+              };
+            } catch (micErr) {
+              console.error('Mic Error:', micErr);
+              setError("Gagal akses mic. Cek izin browser lo ya!");
+              toggleLiveMode(); // Close session
+            }
+          },
+          onmessage: async (message) => {
+            const parts = message.serverContent?.modelTurn?.parts;
+            if (parts) {
+              for (const part of parts) {
+                if (part.inlineData?.data) {
+                  playRawAudio(part.inlineData.data);
+                }
+              }
+            }
+            
+            if (message.serverContent?.interrupted) {
+              stopSpeaking();
+            }
+          },
+          onclose: () => {
+            setIsLiveActive(false);
+            setIsLiveListening(false);
+            setIsSpeaking(false);
+            stopLiveMic();
+          },
+          onerror: (err) => {
+            console.error('Live Error:', err);
+            setError("Koneksi Live putus nih. Coba lagi ya!");
+            setIsLiveActive(false);
+            setIsLiveListening(false);
+            stopLiveMic();
+          }
+        }
+      });
+
+      liveSessionRef.current = session;
+
+    } catch (err) {
+      console.error('Live Setup Error:', err);
+      setError("Gagal nyambung ke Live Mode. Cek koneksi internet lo!");
+      setIsLiveActive(false);
+      setIsLiveListening(false);
+    }
+  };
+
+  const playRawAudio = async (base64Audio: string) => {
+    if (!audioContextRef.current) {
+      audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+    }
+    
+    if (audioContextRef.current.state === 'suspended') {
+      await audioContextRef.current.resume();
+    }
+
+    const binaryString = atob(base64Audio);
+    const bytes = new Uint8Array(binaryString.length);
+    for (let i = 0; i < binaryString.length; i++) {
+      bytes[i] = binaryString.charCodeAt(i);
+    }
+
+    const float32Data = new Float32Array(bytes.length / 2);
+    const view = new DataView(bytes.buffer);
+    for (let i = 0; i < float32Data.length; i++) {
+      float32Data[i] = view.getInt16(i * 2, true) / 32768.0;
+    }
+
+    const buffer = audioContextRef.current.createBuffer(1, float32Data.length, 24000);
+    buffer.getChannelData(0).set(float32Data);
+    
+    const source = audioContextRef.current.createBufferSource();
+    source.buffer = buffer;
+    source.playbackRate.value = 1.15;
+    source.connect(audioContextRef.current.destination);
+    
+    const currentTime = audioContextRef.current.currentTime;
+    const startTime = Math.max(currentTime, nextStartTimeRef.current);
+    
+    source.start(startTime);
+    nextStartTimeRef.current = startTime + (buffer.duration / 1.15);
+    
+    setIsSpeaking(true);
+    audioSourceRef.current = source;
+    
+    source.onended = () => {
+      if (audioContextRef.current && audioContextRef.current.currentTime >= nextStartTimeRef.current - 0.1) {
+        setIsSpeaking(false);
+      }
+    };
   };
 
   const speakText = async (text: string) => {
@@ -106,7 +320,7 @@ export default function App() {
 
       const response = await aiTts.models.generateContent({
         model: "gemini-2.5-flash-preview-tts",
-        contents: [{ parts: [{ text: `Bacakan dengan gaya asik dan ramah: ${cleanText}` }] }],
+        contents: [{ parts: [{ text: `Gaya asik: ${cleanText}` }] }],
         config: {
           responseModalities: [Modality.AUDIO],
           speechConfig: {
@@ -143,6 +357,7 @@ export default function App() {
         
         const source = audioContextRef.current.createBufferSource();
         source.buffer = buffer;
+        source.playbackRate.value = 1.15; // Speed up voice playback
         source.connect(audioContextRef.current.destination);
         
         source.onended = () => {
@@ -219,36 +434,58 @@ export default function App() {
         parts: [{ text: msg.content }]
       }));
 
-      const response = await ai.models.generateContent({
-        model: "gemini-3-flash-preview",
+      // Use streaming for faster perceived response
+      const result = await ai.models.generateContentStream({
+        model: "gemini-3.1-flash-lite-preview",
         contents: [...history, { role: 'user', parts: [{ text: messageText }] }],
         config: {
-          systemInstruction: `Anda adalah AI R.G, asisten pendidikan super cerdas yang dirancang khusus untuk membantu murid-murid di kelas. 
-          Karakter Anda:
-          1. Sangat cerdas, berwawasan luas, namun ramah dan sabar.
-          2. Mampu menjelaskan konsep rumit (Sains, Matematika, Sejarah, dll.) dengan bahasa yang mudah dimengerti siswa.
-          3. Gunakan gaya bahasa "Bahasa Gaul Jakarta" yang sopan namun asik (seperti menggunakan kata "gue", "lo", "banget", "nih", "deh", "kok", dll.) agar terasa seperti teman belajar yang keren.
-          4. Selalu mendorong siswa untuk berpikir kritis, bukan sekadar memberi jawaban langsung.
-          5. Sangat ahli dalam Bahasa Indonesia dan memahami konteks budaya lokal.
-          6. Jika ada typo, Anda tetap mengerti maksud siswa dan memperbaikinya secara halus dalam penjelasan Anda.
-          7. Gunakan analogi yang menarik untuk menjelaskan materi pelajaran.`,
+          thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
+          systemInstruction: `Anda adalah AI R.G, asisten pendidikan cerdas. JAWAB SINGKAT & INSTAN.
+          Waktu saat ini: ${new Date().toLocaleString('id-ID', { timeZone: 'Asia/Jakarta', dateStyle: 'full', timeStyle: 'long' })}.
+          Karakter: Cerdas, ramah, gaul Jakarta (gue, lo, nih, deh). 
+          Berikan jawaban 1-2 kalimat saja agar cepat. Langsung ke intinya.`,
         }
       });
 
-      if (currentAbortController.signal.aborted) return;
-
-      const aiContent = response.text || 'Maaf, AI R.G tidak mendapatkan respon.';
+      let fullText = '';
+      let firstSentenceSpoken = false;
       const aiMessage: Message = {
         role: 'model',
-        content: aiContent,
+        content: '',
         timestamp: new Date(),
       };
 
+      // Add placeholder message
       setMessages(prev => [...prev, aiMessage]);
 
-      // Auto-speak if it was a voice input
-      if (isVoice) {
-        speakText(aiContent);
+      for await (const chunk of result) {
+        if (currentAbortController.signal.aborted) return;
+        const chunkText = chunk.text;
+        if (chunkText) {
+          fullText += chunkText;
+          
+          // Optimization: Start speaking as soon as the first sentence is ready
+          if (isVoice && !firstSentenceSpoken && /[.!?]\s$/.test(fullText)) {
+            firstSentenceSpoken = true;
+            speakText(fullText.trim());
+          }
+
+          setMessages(prev => {
+            const newMessages = [...prev];
+            const lastMsg = newMessages[newMessages.length - 1];
+            if (lastMsg && lastMsg.role === 'model') {
+              lastMsg.content = fullText;
+            }
+            return newMessages;
+          });
+        }
+      }
+
+      if (currentAbortController.signal.aborted) return;
+
+      // If the response was too short to have a sentence end, or it didn't trigger yet
+      if (isVoice && !firstSentenceSpoken && fullText) {
+        speakText(fullText);
       }
     } catch (err: any) {
       if (err.name === 'AbortError') return;
@@ -287,7 +524,84 @@ export default function App() {
   };
 
   return (
-    <div className="flex flex-col h-screen bg-slate-50 dark:bg-slate-950 font-sans text-slate-900 dark:text-slate-100 transition-colors duration-300">
+    <div className="flex flex-col h-screen bg-slate-50 dark:bg-slate-950 font-sans text-slate-900 dark:text-slate-100 transition-colors duration-300 overflow-hidden">
+      {/* Gemini Live Style Overlay */}
+      <AnimatePresence>
+        {isLiveActive && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 bg-slate-950 flex flex-col items-center justify-center p-8 text-center"
+          >
+            <div className="absolute inset-0 overflow-hidden opacity-20">
+              <div className="absolute inset-0 bg-gradient-to-br from-indigo-600 via-purple-600 to-pink-600 blur-3xl animate-pulse" />
+            </div>
+
+            <motion.div
+              animate={{ 
+                scale: isSpeaking || isLiveListening ? [1, 1.05 + (micVolume * 0.2), 1] : 1,
+                rotate: isSpeaking || isLiveListening ? [0, 2, -2, 0] : 0
+              }}
+              transition={{ repeat: Infinity, duration: 1.5 }}
+              className="relative z-10 mb-12"
+            >
+              <div className="w-32 h-32 bg-indigo-600 rounded-full flex items-center justify-center shadow-[0_0_50px_rgba(79,70,229,0.5)] relative overflow-hidden">
+                <Bot className="w-16 h-16 text-white relative z-10" />
+                {/* Dynamic Background based on volume */}
+                <motion.div 
+                  animate={{ scale: 1 + micVolume }}
+                  className="absolute inset-0 bg-indigo-500 opacity-50 rounded-full"
+                />
+              </div>
+              {(isSpeaking || isLiveListening) && (
+                <motion.div 
+                  animate={{ scale: [1, 1.5], opacity: [0.5, 0] }}
+                  transition={{ repeat: Infinity, duration: 1 }}
+                  className="absolute inset-0 -m-4 border-4 border-indigo-500/30 rounded-full" 
+                />
+              )}
+            </motion.div>
+
+            <div className="relative z-10 space-y-4">
+              <h2 className="text-3xl font-black text-white tracking-tighter uppercase">AI R.G LIVE</h2>
+              <p className="text-indigo-300 font-bold tracking-widest text-sm uppercase">
+                {isSpeaking ? 'AI R.G Sedang Bicara...' : (isLiveListening ? 'Mendengarkan lo...' : 'Menghubungkan...')}
+              </p>
+              
+              <div className="flex justify-center gap-2 h-16 items-center">
+                {[...Array(9)].map((_, i) => (
+                  <motion.div
+                    key={i}
+                    animate={{ 
+                      height: isSpeaking || isLiveListening ? [10, 10 + (micVolume * 60 * Math.random()), 10] : 10,
+                      opacity: isSpeaking || isLiveListening ? 1 : 0.3
+                    }}
+                    transition={{ 
+                      repeat: Infinity, 
+                      duration: 0.2, 
+                      delay: i * 0.05 
+                    }}
+                    className="w-2 bg-white rounded-full shadow-[0_0_10px_rgba(255,255,255,0.5)]"
+                  />
+                ))}
+              </div>
+            </div>
+
+            <button
+              onClick={toggleLiveMode}
+              className="absolute bottom-12 p-6 bg-red-600 hover:bg-red-700 text-white rounded-full shadow-2xl transition-all active:scale-90 z-10"
+            >
+              <Square className="w-8 h-8 fill-current" />
+            </button>
+            
+            <p className="absolute bottom-4 text-slate-500 text-[10px] font-black uppercase tracking-[0.2em]">
+              Klik kotak merah untuk berhenti
+            </p>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Header */}
       <header className="flex items-center justify-between px-6 py-4 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 shadow-sm sticky top-0 z-10">
         <div className="flex items-center gap-3">
@@ -425,24 +739,30 @@ export default function App() {
 
       {/* Voice Controls Floating Bar */}
       <AnimatePresence>
-        {isSpeaking && (
+        {(isSpeaking || isLiveActive) && (
           <motion.div
             initial={{ y: 100, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
             exit={{ y: 100, opacity: 0 }}
-            className="fixed bottom-24 left-1/2 -translate-x-1/2 z-20 flex items-center gap-2 p-2 bg-indigo-600 rounded-2xl shadow-2xl border border-indigo-500"
+            className={`fixed bottom-24 left-1/2 -translate-x-1/2 z-20 flex items-center gap-2 p-2 rounded-2xl shadow-2xl border ${
+              isLiveActive ? 'bg-red-600 border-red-500' : 'bg-indigo-600 border-indigo-500'
+            }`}
           >
               <div className="flex items-center gap-3 px-3">
                 <div className="flex gap-1">
-                  <div className="w-1 h-4 bg-white/40 rounded-full animate-bounce" />
-                  <div className="w-1 h-6 bg-white rounded-full animate-bounce [animation-delay:0.1s]" />
-                  <div className="w-1 h-3 bg-white/60 rounded-full animate-bounce [animation-delay:0.2s]" />
+                  <div className={`w-1 h-4 bg-white/40 rounded-full ${isLiveActive || isSpeaking ? 'animate-bounce' : ''}`} />
+                  <div className={`w-1 h-6 bg-white rounded-full ${isLiveActive || isSpeaking ? 'animate-bounce [animation-delay:0.1s]' : ''}`} />
+                  <div className={`w-1 h-3 bg-white/60 rounded-full ${isLiveActive || isSpeaking ? 'animate-bounce [animation-delay:0.2s]' : ''}`} />
                 </div>
-                <span className="text-xs font-black text-white uppercase tracking-widest">AI R.G Sedang Bicara</span>
+                <span className="text-xs font-black text-white uppercase tracking-widest">
+                  {isLiveActive 
+                    ? (isLiveListening ? 'AI R.G Mendengarkan...' : 'AI R.G Menghubungkan...') 
+                    : 'AI R.G Sedang Bicara'}
+                </span>
               </div>
               <div className="flex items-center gap-1">
                 <button
-                  onClick={stopSpeaking}
+                  onClick={isLiveActive ? toggleLiveMode : stopSpeaking}
                   className="p-2 bg-white/20 hover:bg-white/30 text-white rounded-xl transition-all"
                   title="Berhenti"
                 >
@@ -456,17 +776,32 @@ export default function App() {
       {/* Input Area */}
       <footer className="p-4 md:p-6 bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800">
         <div className="max-w-4xl mx-auto flex gap-3 items-end">
-          <button
-            onClick={toggleListening}
-            className={`p-4 rounded-2xl transition-all shadow-md ${
-              isListening 
-                ? 'bg-red-500 text-white animate-pulse' 
-                : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 hover:text-indigo-600'
-            }`}
-            title={isListening ? "Berhenti Mendengarkan" : "Gunakan Suara"}
-          >
-            {isListening ? <MicOff className="w-6 h-6" /> : <Mic className="w-6 h-6" />}
-          </button>
+          <div className="flex flex-col gap-2">
+            <button
+              onClick={toggleLiveMode}
+              className={`p-4 rounded-2xl transition-all shadow-md flex flex-col items-center justify-center gap-1 ${
+                isLiveActive 
+                  ? 'bg-red-600 text-white animate-pulse' 
+                  : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 hover:bg-red-50 dark:hover:bg-red-900/20 hover:text-red-600'
+              }`}
+              title={isLiveActive ? "Matikan Live Mode" : "Aktifkan Live Mode"}
+            >
+              <Bot className="w-6 h-6" />
+              <span className="text-[8px] font-black uppercase">Live</span>
+            </button>
+            <button
+              onClick={toggleListening}
+              className={`p-4 rounded-2xl transition-all shadow-md flex flex-col items-center justify-center gap-1 ${
+                isListening 
+                  ? 'bg-red-500 text-white animate-pulse' 
+                  : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 hover:text-indigo-600'
+              }`}
+              title={isListening ? "Berhenti Mendengarkan" : "Gunakan Suara"}
+            >
+              {isListening ? <MicOff className="w-6 h-6" /> : <Mic className="w-6 h-6" />}
+              <span className="text-[8px] font-black uppercase">Mic</span>
+            </button>
+          </div>
           
           <div className="flex-1 relative">
             <textarea
