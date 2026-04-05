@@ -23,8 +23,6 @@ const getApiKey = () => {
   return viteKey || processKey || '';
 };
 
-const ai = new GoogleGenAI({ apiKey: getApiKey() });
-
 interface Message {
   role: 'user' | 'model';
   content: string;
@@ -214,6 +212,7 @@ export default function App() {
         throw new Error('API Key Gemini belum diset. Kalo lo di Vercel, tambahin VITE_GEMINI_API_KEY di Environment Variables.');
       }
 
+      const ai = new GoogleGenAI({ apiKey });
       const history = messages.map(msg => ({
         role: msg.role,
         parts: [{ text: msg.content }]
@@ -483,7 +482,7 @@ export default function App() {
               className="w-full p-4 pr-14 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl focus:outline-none focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 dark:focus:border-indigo-400 transition-all resize-none max-h-32 shadow-inner font-medium text-slate-800 dark:text-slate-100"
             />
             <button
-              onClick={handleSend}
+              onClick={() => handleSend()}
               disabled={!input.trim() || isLoading}
               className={`absolute right-2 bottom-2 p-2.5 rounded-xl transition-all ${
                 !input.trim() || isLoading 
