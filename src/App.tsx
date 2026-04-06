@@ -1236,10 +1236,11 @@ export default function App() {
           {/* Video Background */}
           <video
             ref={videoRef}
-            src="/vergil.mp4"
+            src="https://docs.google.com/uc?id=1fzEXPE4PijbLepGlDXf4svlPkmjhgU0S"
             loop
             muted
             playsInline
+            crossOrigin="anonymous"
             className="absolute inset-0 w-full h-full object-cover opacity-40 transition-opacity duration-1000"
           />
           
