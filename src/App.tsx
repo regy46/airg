@@ -413,23 +413,9 @@ export default function App() {
     const video = videoRef.current;
     if (video) {
       if (isFlikcam && !isLiveActive) {
-        // Use export=media for more reliable streaming from Google Drive
-        video.src = "https://drive.google.com/uc?id=1fzEXPE4PijbLepGlDXf4svlPkmjhgU0S&export=media";
-        video.load();
-        
-        // Try playing multiple times if blocked
-        const playVideo = () => {
-          video.play().catch(e => {
-            console.log("Video play blocked, retrying...", e);
-            // Retry on user interaction if needed
-          });
-        };
-        
-        video.oncanplay = () => playVideo();
-        playVideo();
+        video.play().catch(e => console.log("Video play blocked", e));
       } else {
         video.pause();
-        video.src = ""; 
       }
     }
   }, [isFlikcam, isLiveActive]);
@@ -1251,6 +1237,7 @@ export default function App() {
           {/* Video Background */}
           <video
             ref={videoRef}
+            src="https://drive.google.com/uc?export=download&id=1fzEXPE4PijbLepGlDXf4svlPkmjhgU0S"
             loop
             muted
             playsInline
