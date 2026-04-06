@@ -4,7 +4,7 @@
  */
 
 import { useState, useRef, useEffect, ChangeEvent } from 'react';
-import { Send, Bot, User, Loader2, Sparkles, Trash2, Copy, Check, Mic, MicOff, Volume2, GraduationCap, Pause, Play, Square, VolumeX, Plus, X, MoreVertical, Search, MapPin, FileText, Upload, AlertCircle } from 'lucide-react';
+import { Send, Bot, User, Loader2, Sparkles, Trash2, Copy, Check, Mic, MicOff, Volume2, GraduationCap, Pause, Play, Square, VolumeX, Plus, X, MoreVertical, Search, MapPin, FileText, Upload, AlertCircle, Sword, Zap, Music, Music2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { GoogleGenAI, Modality, ThinkingLevel, Type } from '@google/genai';
 import * as pdfjsLib from 'pdfjs-dist';
@@ -335,6 +335,7 @@ function QuizView({
 
 export default function App() {
   const [messages, setMessages] = useState<Message[]>([]);
+  const [flikcamMessages, setFlikcamMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -342,12 +343,81 @@ export default function App() {
   const [isListening, setIsListening] = useState(false);
   const [isLiveActive, setIsLiveActive] = useState(false);
   const [isLiveListening, setIsLiveListening] = useState(false);
+  const [liveSubtitle, setLiveSubtitle] = useState("");
+  const translationQueueRef = useRef<string[]>([]);
+  const isTranslatingRef = useRef(false);
+
+  const accumulatedTranscriptionRef = useRef("");
+  const translateTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const lastTranslatedTextRef = useRef("");
+  
+  const translateText = (text: string) => {
+    const trimmedText = text.trim();
+    if (!trimmedText || trimmedText === lastTranslatedTextRef.current) return;
+    
+    if (translateTimeoutRef.current) clearTimeout(translateTimeoutRef.current);
+    
+    translateTimeoutRef.current = setTimeout(async () => {
+      lastTranslatedTextRef.current = trimmedText;
+      try {
+        const apiKey = getApiKey();
+        const ai = new GoogleGenAI({ apiKey });
+        const response = await ai.models.generateContent({
+          model: "gemini-3-flash-preview",
+          contents: `Translate this DMC Vergil quote to Indonesian (short, cool, only the translation): "${trimmedText}"`,
+          config: { thinkingConfig: { thinkingLevel: ThinkingLevel.MINIMAL } }
+        });
+        if (response.text) {
+          const translation = response.text.trim().replace(/^"|"$/g, '');
+          setLiveSubtitle(translation);
+        }
+      } catch (err) {
+        console.error("Translation error:", err);
+      }
+    }, 150); 
+  };
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [view, setView] = useState<'chat' | 'quiz'>('chat');
   const [mode, setMode] = useState<'chat' | 'study'>('chat');
+  const [isFlikcam, setIsFlikcam] = useState(false);
+  const [isMusicOn, setIsMusicOn] = useState(true);
+  const musicRef = useRef<HTMLAudioElement | null>(null);
+
+  // Background Music Logic
+  useEffect(() => {
+    if (!musicRef.current) {
+      // Using a more reliable link for Bury the Light (Archive.org)
+      musicRef.current = new Audio("https://ia801602.us.archive.org/11/items/bury-the-light/Bury%20the%20Light.mp3");
+      musicRef.current.loop = true;
+      musicRef.current.volume = 0.2;
+    }
+
+    const playMusic = async () => {
+      if (isFlikcam && isMusicOn && !isLiveActive) {
+        try {
+          await musicRef.current?.play();
+        } catch (e) {
+          console.log("Music play blocked by browser. Waiting for interaction.", e);
+        }
+      } else {
+        musicRef.current?.pause();
+      }
+    };
+
+    playMusic();
+
+    return () => {
+      if (musicRef.current) {
+        musicRef.current.pause();
+      }
+    };
+  }, [isFlikcam, isMusicOn, isLiveActive]);
+
   const [isSpeaking, setIsSpeaking] = useState(false);
+  const isSpeakingRef = useRef(false);
   const [isAudioLoading, setIsAudioLoading] = useState(false);
   const [micVolume, setMicVolume] = useState(0);
+  const speakingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const [pdfContent, setPdfContent] = useState<string | null>(null);
   const [pdfFileName, setPdfFileName] = useState<string | null>(null);
   const [isExtractingPdf, setIsExtractingPdf] = useState(false);
@@ -371,13 +441,19 @@ export default function App() {
   const micContextRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
 
+  useEffect(() => {
+    if (isLiveActive) {
+      toggleLiveMode();
+    }
+  }, [isFlikcam]);
+
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
 
   useEffect(() => {
     scrollToBottom();
-  }, [messages]);
+  }, [messages, flikcamMessages]);
 
   // Initialize Speech Recognition
   useEffect(() => {
@@ -433,6 +509,7 @@ export default function App() {
   };
 
   const toggleLiveMode = async () => {
+    setLiveSubtitle("");
     if (isLiveActive) {
       if (liveSessionRef.current) {
         try {
@@ -467,10 +544,18 @@ export default function App() {
         model: "gemini-3.1-flash-live-preview",
         config: {
           responseModalities: [Modality.AUDIO],
-          systemInstruction: "Anda adalah AI R.G. MODE LIVE: JAWAB INSTAN & SANGAT SINGKAT. Gunakan bahasa gaul Jakarta (gue, lo, nih, deh). JANGAN MIKIR. Langsung nyaut aja. Maksimal 10 kata per jawaban. Fokus pada kecepatan, bukan kelengkapan.",
+          outputAudioTranscription: {},
+          inputAudioTranscription: {},
+          systemInstruction: isFlikcam 
+            ? `YOU ARE VERGIL FROM DMC.
+               
+               MANDATORY RULES:
+               - YOU SPEAK INDONESIAN (BAHASA INDONESIA).
+               - TONE: COLD, STOIC, POWERFUL.`
+            : "Anda adalah AI R.G. MODE LIVE: JAWAB INSTAN & SANGAT SINGKAT. Gunakan bahasa gaul Jakarta (gue, lo, nih, deh). JANGAN MIKIR. Langsung nyaut aja. Maksimal 10 kata per jawaban. Fokus pada kecepatan, bukan kelengkapan.",
           thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
           speechConfig: {
-            voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Zephyr' } }
+            voiceConfig: { prebuiltVoiceConfig: { voiceName: isFlikcam ? 'Charon' : 'Zephyr' } }
           }
         },
         callbacks: {
@@ -503,7 +588,16 @@ export default function App() {
                 if (!isLiveActive || !analyserRef.current) return;
                 analyserRef.current.getByteFrequencyData(dataArray);
                 const average = dataArray.reduce((a, b) => a + b) / dataArray.length;
-                setMicVolume(average / 128); // Normalize to 0-1
+                const vol = average / 128;
+                setMicVolume(vol);
+                
+                // Clear subtitles when user starts speaking
+                if (vol > 0.15 && !isSpeaking) {
+                  setLiveSubtitle("");
+                  isSpeakingRef.current = false;
+                  accumulatedTranscriptionRef.current = "";
+                }
+                
                 requestAnimationFrame(updateVolume);
               };
               updateVolume();
@@ -535,16 +629,45 @@ export default function App() {
             }
           },
           onmessage: async (message) => {
-            const parts = message.serverContent?.modelTurn?.parts;
-            if (parts) {
-              for (const part of parts) {
-                if (part.inlineData?.data) {
-                  playRawAudio(part.inlineData.data);
+            // Reset idle timeout for turn detection
+            if (speakingTimeoutRef.current) clearTimeout(speakingTimeoutRef.current);
+            speakingTimeoutRef.current = setTimeout(() => {
+              isSpeakingRef.current = false;
+            }, 3000); // 3 seconds of silence from model = turn over
+
+            // Handle Audio
+            const modelTurn = message.serverContent?.modelTurn;
+            if (modelTurn) {
+              const parts = modelTurn.parts;
+              if (parts) {
+                for (const part of parts) {
+                  if (part.inlineData?.data) {
+                    setIsSpeaking(true);
+                    playRawAudio(part.inlineData.data);
+                  }
+                  if (part.text) {
+                    // Accumulate transcription for better translation
+                    if (!isSpeakingRef.current) {
+                      isSpeakingRef.current = true;
+                      accumulatedTranscriptionRef.current = "";
+                    }
+                    accumulatedTranscriptionRef.current += part.text;
+                    
+                    if (isFlikcam) {
+                      setLiveSubtitle(accumulatedTranscriptionRef.current);
+                    } else {
+                      setLiveSubtitle(accumulatedTranscriptionRef.current);
+                    }
+                  }
                 }
               }
             }
             
+            // Handle Interruption
             if (message.serverContent?.interrupted) {
+              setLiveSubtitle("");
+              accumulatedTranscriptionRef.current = "";
+              isSpeakingRef.current = false;
               stopSpeaking();
             }
           },
@@ -552,6 +675,7 @@ export default function App() {
             setIsLiveActive(false);
             setIsLiveListening(false);
             setIsSpeaking(false);
+            if (speakingTimeoutRef.current) clearTimeout(speakingTimeoutRef.current);
             stopLiveMic();
           },
           onerror: (err) => {
@@ -559,6 +683,8 @@ export default function App() {
             setError("Koneksi Live putus nih. Coba lagi ya!");
             setIsLiveActive(false);
             setIsLiveListening(false);
+            setIsSpeaking(false);
+            if (speakingTimeoutRef.current) clearTimeout(speakingTimeoutRef.current);
             stopLiveMic();
           }
         }
@@ -575,6 +701,13 @@ export default function App() {
   };
 
   const playRawAudio = async (base64Audio: string) => {
+    setIsSpeaking(true);
+    if (speakingTimeoutRef.current) clearTimeout(speakingTimeoutRef.current);
+    speakingTimeoutRef.current = setTimeout(() => {
+      setIsSpeaking(false);
+      isSpeakingRef.current = false; // Reset for next turn
+    }, 1500); // Reset after 1.5 seconds of silence
+
     if (!audioContextRef.current) {
       audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
     }
@@ -640,12 +773,12 @@ export default function App() {
 
       const response = await aiTts.models.generateContent({
         model: "gemini-2.5-flash-preview-tts",
-        contents: [{ parts: [{ text: `Gaya asik: ${cleanText}` }] }],
+        contents: [{ parts: [{ text: isFlikcam ? `Speak as VERGIL from Devil May Cry. Be cold, authoritative, and stoic. Speak in Indonesian: ${cleanText}` : `Gaya asik: ${cleanText}` }] }],
         config: {
           responseModalities: [Modality.AUDIO],
           speechConfig: {
             voiceConfig: {
-              prebuiltVoiceConfig: { voiceName: 'Zephyr' }, // Zephyr is clear and helpful
+              prebuiltVoiceConfig: { voiceName: isFlikcam ? 'Charon' : 'Zephyr' }, 
             },
           },
         },
@@ -792,6 +925,11 @@ export default function App() {
     const messageText = textOverride || input;
     if ((!messageText.trim() && !pdfContent) || isLoading) return;
 
+    // Capture the mode at the start of the request
+    const targetFlikcam = isFlikcam;
+    const currentSetMessages = targetFlikcam ? setFlikcamMessages : setMessages;
+    const currentMessages = targetFlikcam ? flikcamMessages : messages;
+
     // Stop speaking if AI is currently talking
     stopSpeaking();
 
@@ -809,7 +947,7 @@ export default function App() {
       location: userLocation ? { ...userLocation } : undefined,
     };
 
-    setMessages(prev => [...prev, userMessage]);
+    currentSetMessages(prev => [...prev, userMessage]);
     setInput('');
     setIsLoading(true);
     setError(null);
@@ -822,14 +960,14 @@ export default function App() {
 
       const ai = new GoogleGenAI({ apiKey });
 
-      const history = messages.map(msg => ({
+      const history = currentMessages.map(msg => ({
         role: msg.role,
         parts: [{ text: msg.content }]
       }));
 
       // Detect location/weather intent
       const lowerText = messageText.toLowerCase();
-      const isLocationQuery = /lokasi|tempat|kafe|restoran|dekat|di mana|maps|rute|jarak|makan|minum|kopi|warung|toko|apotek|spbu|bensin|mall|atm|bank|sekarang/.test(lowerText);
+      const isLocationQuery = !isFlikcam && /lokasi|tempat|kafe|restoran|dekat|di mana|maps|rute|jarak|makan|minum|kopi|warung|toko|apotek|spbu|bensin|mall|atm|bank|sekarang/.test(lowerText);
       const isWeatherQuery = /cuaca|hujan|panas|dingin|suhu|ramalan/.test(lowerText);
       
       let locationContext = "";
@@ -850,7 +988,7 @@ export default function App() {
         } else {
           // ... fetch location ...
           const locId = Date.now();
-          setMessages(prev => [...prev, {
+          currentSetMessages(prev => [...prev, {
             role: 'model',
             content: '📍 Sebentar ya, gue cek lokasi lo dulu biar akurat...',
             timestamp: new Date(),
@@ -859,7 +997,7 @@ export default function App() {
 
           const loc = await getCurrentLocation();
           
-          setMessages(prev => prev.filter((m: any) => m.id !== locId));
+          currentSetMessages(prev => prev.filter((m: any) => m.id !== locId));
 
           if (loc) {
             currentCoords = loc;
@@ -890,17 +1028,30 @@ export default function App() {
 
       // Use streaming for faster perceived response
       let result;
-      const baseSystemInstruction = mode === 'study' 
-        ? `Anda adalah AI R.G dalam MODE BELAJAR. Fokus pada penjelasan materi pendidikan yang mendalam, langkah demi langkah, dan edukatif.
-           Waktu saat ini: ${new Date().toLocaleString('id-ID', { timeZone: 'Asia/Jakarta', dateStyle: 'full', timeStyle: 'long' })}.
-           Karakter: Sabar, cerdas, ramah, dan sangat membantu dalam memahami konsep sulit.
-           Gunakan bahasa Indonesia yang baik namun tetap akrab.
-           Gunakan Google Search untuk memberikan data dan fakta terbaru.`
-        : `Anda adalah AI R.G dalam MODE NGOBROL. JAWAB SINGKAT & INSTAN.
-           Waktu saat ini: ${new Date().toLocaleString('id-ID', { timeZone: 'Asia/Jakarta', dateStyle: 'full', timeStyle: 'long' })}.
-           Karakter: Cerdas, ramah, gaul Jakarta (gue, lo, nih, deh). 
-           Berikan jawaban 1-2 kalimat saja agar cepat. Langsung ke intinya.
-           Gunakan Google Search untuk memberikan informasi terbaru dan akurat jika diperlukan.`;
+      
+      let baseSystemInstruction = "";
+      
+      if (targetFlikcam) {
+        baseSystemInstruction = `Anda adalah VERGIL dari game Devil May Cry. 
+           Sifat: Disiplin, Dingin, Stoisisme, Elitis, dan Terobsesi dengan Kekuatan (Power).
+           Gaya Bicara: Singkat, Padat, Berkelas, Formal, Baku, dan To the Point.
+           Karakter: Tenang yang mematikan, berwibawa, memandang rendah kelemahan manusia.
+           Catchphrases: "Motivation", "Show me your motivation!", "Power... I need more power!", "Foolishness, Dante. Foolishness.", "My power shall be absolute."
+           ATURAN: Jangan gunakan bahasa slang/gaul. Jangan bertele-tele. Setiap kata harus efisien dan tajam. Jangan menunjukkan empati.
+           Waktu saat ini: ${new Date().toLocaleString('id-ID', { timeZone: 'Asia/Jakarta', dateStyle: 'full', timeStyle: 'long' })}.`;
+      } else {
+        baseSystemInstruction = mode === 'study' 
+          ? `Anda adalah AI R.G dalam MODE BELAJAR. Fokus pada penjelasan materi pendidikan yang mendalam, langkah demi langkah, dan edukatif.
+             Waktu saat ini: ${new Date().toLocaleString('id-ID', { timeZone: 'Asia/Jakarta', dateStyle: 'full', timeStyle: 'long' })}.
+             Karakter: Sabar, cerdas, ramah, dan sangat membantu dalam memahami konsep sulit.
+             Gunakan bahasa Indonesia yang baik namun tetap akrab.
+             Gunakan Google Search untuk memberikan data dan fakta terbaru.`
+          : `Anda adalah AI R.G dalam MODE NGOBROL. JAWAB SINGKAT & INSTAN.
+             Waktu saat ini: ${new Date().toLocaleString('id-ID', { timeZone: 'Asia/Jakarta', dateStyle: 'full', timeStyle: 'long' })}.
+             Karakter: Cerdas, ramah, gaul Jakarta (gue, lo, nih, deh). 
+             Berikan jawaban 1-2 kalimat saja agar cepat. Langsung ke intinya.
+             Gunakan Google Search untuk memberikan informasi terbaru dan akurat jika diperlukan.`;
+      }
 
       const locationInstruction = currentCoords 
         ? `\n\n[SANGAT PENTING - INSTRUKSI LOKASI]
@@ -958,7 +1109,7 @@ export default function App() {
       };
 
       // Add placeholder message
-      setMessages(prev => [...prev, aiMessage]);
+      currentSetMessages(prev => [...prev, aiMessage]);
 
       for await (const chunk of result) {
         if (currentAbortController.signal.aborted) return;
@@ -979,7 +1130,7 @@ export default function App() {
             speakText(fullText.trim());
           }
 
-          setMessages(prev => {
+          currentSetMessages(prev => {
             const newMessages = [...prev];
             const lastMsg = newMessages[newMessages.length - 1];
             if (lastMsg && lastMsg.role === 'model') {
@@ -1027,7 +1178,11 @@ export default function App() {
       abortControllerRef.current.abort();
       abortControllerRef.current = null;
     }
-    setMessages([]);
+    if (isFlikcam) {
+      setFlikcamMessages([]);
+    } else {
+      setMessages([]);
+    }
     setError(null);
     setIsLoading(false);
     stopSpeaking();
@@ -1035,7 +1190,25 @@ export default function App() {
 
 
   return (
-    <div className="flex flex-col h-screen bg-slate-50 dark:bg-slate-950 font-sans text-slate-900 dark:text-slate-100 transition-colors duration-300 overflow-hidden">
+    <div className={`flex flex-col h-screen font-sans transition-colors duration-500 overflow-hidden relative ${
+      isFlikcam 
+        ? 'bg-slate-950 text-blue-100' 
+        : 'bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100'
+    }`}>
+      {isFlikcam && (
+        <div className="absolute inset-0 pointer-events-none z-0 overflow-hidden">
+          {/* Neon Grid Pattern */}
+          <div className="absolute inset-0 opacity-[0.05]" style={{ backgroundImage: 'linear-gradient(45deg, #2563eb 1px, transparent 1px), linear-gradient(-45deg, #2563eb 1px, transparent 1px)', backgroundSize: '40px 40px' }} />
+          
+          {/* Blue Glows */}
+          <div className="absolute top-0 left-1/4 w-96 h-96 bg-blue-600/10 blur-[120px] rounded-full animate-pulse" />
+          <div className="absolute bottom-0 right-1/4 w-96 h-96 bg-blue-900/20 blur-[120px] rounded-full" />
+          
+          {/* Sword Slash Effect (Decorative) */}
+          <div className="absolute top-1/2 left-0 w-full h-[1px] bg-gradient-to-r from-transparent via-blue-500 to-transparent opacity-20 rotate-[-15deg] transform -translate-y-1/2" />
+          <div className="absolute top-1/3 left-0 w-full h-[1px] bg-gradient-to-r from-transparent via-blue-400 to-transparent opacity-10 rotate-[10deg] transform -translate-y-1/2" />
+        </div>
+      )}
       {/* PDF Extraction Loading Overlay */}
       <AnimatePresence>
         {isExtractingPdf && (
@@ -1066,10 +1239,14 @@ export default function App() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 bg-slate-950 flex flex-col items-center justify-center p-8 text-center"
+            className="fixed inset-0 z-50 bg-slate-950 flex flex-col items-center justify-center p-8 text-center overflow-y-auto"
           >
             <div className="absolute inset-0 overflow-hidden opacity-20">
-              <div className="absolute inset-0 bg-gradient-to-br from-indigo-600 via-purple-600 to-pink-600 blur-3xl animate-pulse" />
+              <div className={`absolute inset-0 blur-3xl animate-pulse ${
+                isFlikcam 
+                  ? 'bg-gradient-to-br from-blue-900 via-slate-900 to-blue-600' 
+                  : 'bg-gradient-to-br from-indigo-600 via-purple-600 to-pink-600'
+              }`} />
             </div>
 
             <motion.div
@@ -1078,29 +1255,57 @@ export default function App() {
                 rotate: isSpeaking || isLiveListening ? [0, 2, -2, 0] : 0
               }}
               transition={{ repeat: Infinity, duration: 1.5 }}
-              className="relative z-10 mb-12"
+              className="relative z-10 mb-24"
             >
-              <div className="w-32 h-32 bg-indigo-600 rounded-full flex items-center justify-center shadow-[0_0_50px_rgba(79,70,229,0.5)] relative overflow-hidden">
-                <Bot className="w-16 h-16 text-white relative z-10" />
+              <div className={`w-32 h-32 rounded-full flex items-center justify-center relative overflow-hidden ${
+                isFlikcam 
+                  ? 'bg-blue-900 shadow-[0_0_60px_rgba(37,99,235,0.6)] border-2 border-blue-400/50' 
+                  : 'bg-indigo-600 shadow-[0_0_50px_rgba(79,70,229,0.5)]'
+              }`}>
+                {isFlikcam ? <Sword className="w-16 h-16 text-blue-200 relative z-10" /> : <Bot className="w-16 h-16 text-white relative z-10" />}
                 {/* Dynamic Background based on volume */}
                 <motion.div 
                   animate={{ scale: 1 + micVolume }}
-                  className="absolute inset-0 bg-indigo-500 opacity-50 rounded-full"
+                  className={`absolute inset-0 opacity-50 rounded-full ${isFlikcam ? 'bg-blue-600' : 'bg-indigo-500'}`}
                 />
               </div>
               {(isSpeaking || isLiveListening) && (
                 <motion.div 
                   animate={{ scale: [1, 1.5], opacity: [0.5, 0] }}
                   transition={{ repeat: Infinity, duration: 1 }}
-                  className="absolute inset-0 -m-4 border-4 border-indigo-500/30 rounded-full" 
+                  className={`absolute inset-0 -m-4 border-4 rounded-full ${isFlikcam ? 'border-blue-400/30' : 'border-indigo-500/30'}`} 
                 />
               )}
             </motion.div>
 
+            {/* Subtitles - Placed as a separate sibling for better visibility */}
+            <AnimatePresence>
+              {liveSubtitle && (
+                <motion.div
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0 }}
+                  className="relative z-50 mt-12 w-full max-w-sm px-4"
+                >
+                  <div className={`p-5 rounded-2xl backdrop-blur-3xl border-2 ${
+                    isFlikcam 
+                      ? 'bg-blue-950/95 border-blue-400/70 text-blue-50 shadow-[0_0_60px_rgba(37,99,235,0.7)]' 
+                      : 'bg-white/20 border-white/30 text-white shadow-2xl'
+                  }`}>
+                    <p className="text-base font-black leading-relaxed italic text-center drop-shadow-xl">
+                      "{liveSubtitle}"
+                    </p>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
             <div className="relative z-10 space-y-4">
-              <h2 className="text-3xl font-black text-white tracking-tighter uppercase">AI R.G LIVE</h2>
-              <p className="text-indigo-300 font-bold tracking-widest text-sm uppercase">
-                {isSpeaking ? 'AI R.G Sedang Bicara...' : (isLiveListening ? 'Mendengarkan lo...' : 'Menghubungkan...')}
+              <h2 className={`text-3xl font-black tracking-tighter uppercase ${isFlikcam ? 'text-blue-100' : 'text-white'}`}>
+                {isFlikcam ? 'VERGIL LIVE' : 'AI R.G LIVE'}
+              </h2>
+              <p className={`font-bold tracking-widest text-sm uppercase ${isFlikcam ? 'text-blue-400' : 'text-indigo-300'}`}>
+                {isSpeaking ? (isFlikcam ? 'Vergil Sedang Bicara...' : 'AI R.G Sedang Bicara...') : (isLiveListening ? 'Mendengarkan lo...' : 'Menghubungkan...')}
               </p>
               
               <div className="flex justify-center gap-2 h-16 items-center">
@@ -1137,94 +1342,145 @@ export default function App() {
       </AnimatePresence>
 
       {/* Header */}
-      <header className="flex items-center justify-between px-6 py-4 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 shadow-sm sticky top-0 z-30">
-        <div className="flex items-center gap-3">
-          <div className="p-2 bg-indigo-600 rounded-xl shadow-indigo-200 dark:shadow-none shadow-lg">
-            <GraduationCap className="w-6 h-6 text-white" />
+      <header className={`flex items-center justify-between px-4 sm:px-6 py-3 sm:py-4 border-b shadow-sm sticky top-0 z-30 transition-all duration-500 ${
+        isFlikcam 
+          ? 'bg-slate-900/80 backdrop-blur-md border-blue-900/50 shadow-blue-900/20' 
+          : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800'
+      }`}>
+        <div className="flex items-center gap-2 sm:gap-3">
+          <div className={`p-1.5 sm:p-2 rounded-xl shadow-lg transition-all duration-500 ${
+            isFlikcam 
+              ? 'bg-blue-900 shadow-blue-500/20' 
+              : 'bg-indigo-600 shadow-indigo-200 dark:shadow-none'
+          }`}>
+            {isFlikcam ? <Sword className="w-5 h-5 sm:w-6 sm:h-6 text-blue-200" /> : <GraduationCap className="w-5 h-5 sm:w-6 sm:h-6 text-white" />}
           </div>
-          <div className="hidden sm:block">
-            <h1 className="text-xl font-black tracking-tighter text-slate-800 dark:text-white uppercase">AI R.G</h1>
-            <div className="flex items-center gap-1.5">
-              <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
-              <span className="text-[10px] text-slate-500 dark:text-slate-400 font-bold uppercase tracking-widest">Asisten Kelas Aktif</span>
+          <div className="hidden xs:block">
+            <h1 className={`text-lg sm:text-xl font-black tracking-tighter uppercase transition-colors duration-500 ${
+              isFlikcam ? 'text-blue-100' : 'text-slate-800 dark:text-white'
+            }`}>
+              {isFlikcam ? 'FLIKCAM' : 'AI R.G'}
+            </h1>
+            <div className="hidden sm:flex items-center gap-1.5">
+              <div className={`w-2 h-2 rounded-full animate-pulse ${isFlikcam ? 'bg-blue-400' : 'bg-green-500'}`} />
+              <span className={`text-[10px] font-bold uppercase tracking-widest transition-colors duration-500 ${
+                isFlikcam ? 'text-blue-400' : 'text-slate-500 dark:text-slate-400'
+              }`}>
+                {isFlikcam ? 'Vergil Mode Active' : 'Asisten Kelas Aktif'}
+              </span>
             </div>
           </div>
         </div>
 
-        {pdfFileName && (
-          <div className="hidden md:flex items-center gap-2 px-3 py-1 bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800 rounded-full">
+        <div className="flex items-center gap-2 sm:gap-4">
+          {/* Flikcam Toggle */}
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => setIsFlikcam(!isFlikcam)}
+              className={`flex items-center gap-2 px-3 sm:px-4 py-2 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all ${
+                isFlikcam 
+                  ? 'bg-blue-600 text-white shadow-[0_0_15px_rgba(37,99,235,0.5)] border border-blue-400' 
+                  : 'bg-slate-100 dark:bg-slate-800 text-slate-500 hover:bg-blue-50 dark:hover:bg-blue-900/20 hover:text-blue-600'
+              }`}
+            >
+              <Zap className={`w-3.5 h-3.5 ${isFlikcam ? 'animate-pulse' : ''}`} />
+              <span className="hidden sm:inline">FLIKCAM</span>
+            </button>
+
+            {isFlikcam && (
+              <button
+                onClick={() => setIsMusicOn(!isMusicOn)}
+                className={`p-2 rounded-xl transition-all ${
+                  isMusicOn 
+                    ? 'bg-blue-500/20 text-blue-400 shadow-inner' 
+                    : 'bg-slate-100 dark:bg-slate-800 text-slate-400'
+                }`}
+                title={isMusicOn ? "Matikan Musik" : "Nyalakan Musik"}
+              >
+                {isMusicOn ? <Music className="w-4 h-4 animate-bounce" /> : <Music2 className="w-4 h-4" />}
+              </button>
+            )}
+          </div>
+
+          {pdfFileName && (
+          <div className="hidden lg:flex items-center gap-2 px-3 py-1 bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800 rounded-full">
             <FileText className="w-3 h-3 text-orange-600" />
             <span className="text-[10px] font-black text-orange-600 uppercase tracking-widest truncate max-w-[100px]">{pdfFileName}</span>
           </div>
         )}
 
-        {/* Mode Toggle */}
-        <div className="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-2xl border border-slate-200 dark:border-slate-700">
-          <button
-            onClick={() => setMode('chat')}
-            className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all flex items-center gap-2 ${
-              mode === 'chat' 
-                ? 'bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-400 shadow-sm' 
-                : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
-            }`}
-          >
-            <Volume2 className="w-3.5 h-3.5" />
-            Ngobrol
-          </button>
-          <button
-            onClick={() => setMode('study')}
-            className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all flex items-center gap-2 ${
-              mode === 'study' 
-                ? 'bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-400 shadow-sm' 
-                : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
-            }`}
-          >
-            <GraduationCap className="w-3.5 h-3.5" />
-            Belajar
-          </button>
-        </div>
-
-        <div className="flex items-center gap-2">
-          {userLocation ? (
-            <div className="hidden md:flex items-center gap-1.5 px-3 py-1.5 bg-green-50 dark:bg-green-900/20 border border-green-100 dark:border-green-900/30 rounded-full">
-              <div className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse" />
-              <span className="text-[10px] font-black text-green-600 dark:text-green-400 uppercase tracking-widest">GPS Aktif</span>
-            </div>
-          ) : (
+        {!isFlikcam && (
+          <div className="flex bg-slate-100 dark:bg-slate-800 p-1 rounded-2xl border border-slate-200 dark:border-slate-700">
             <button
-              onClick={() => getCurrentLocation()}
-              disabled={isLocating}
-              className={`hidden md:flex items-center gap-1.5 px-3 py-1.5 rounded-full border transition-all ${
-                isLocating 
-                  ? 'bg-slate-50 border-slate-200 text-slate-400 dark:bg-slate-800 dark:border-slate-700' 
-                  : 'bg-indigo-50 border-indigo-100 text-indigo-600 hover:bg-indigo-100 dark:bg-indigo-900/20 dark:border-indigo-800 dark:text-indigo-400'
+              onClick={() => setMode('chat')}
+              className={`px-3 sm:px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all flex items-center gap-2 ${
+                mode === 'chat' 
+                  ? 'bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-400 shadow-sm' 
+                  : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
               }`}
             >
-              {isLocating ? <Loader2 className="w-3 h-3 animate-spin" /> : <MapPin className="w-3 h-3" />}
-              <span className="text-[10px] font-black uppercase tracking-widest">Cek Lokasi</span>
+              <Volume2 className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Ngobrol</span>
             </button>
+            <button
+              onClick={() => setMode('study')}
+              className={`px-3 sm:px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all flex items-center gap-2 ${
+                mode === 'study' 
+                  ? 'bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-400 shadow-sm' 
+                  : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
+              }`}
+            >
+              <GraduationCap className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Belajar</span>
+            </button>
+          </div>
+        )}
+
+        <div className="flex items-center gap-1 sm:gap-2">
+          {!isFlikcam && (
+            userLocation ? (
+              <div className="hidden lg:flex items-center gap-1.5 px-3 py-1.5 bg-green-50 dark:bg-green-900/20 border border-green-100 dark:border-green-900/30 rounded-full">
+                <div className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse" />
+                <span className="text-[10px] font-black text-green-600 dark:text-green-400 uppercase tracking-widest">GPS Aktif</span>
+              </div>
+            ) : (
+              <button
+                onClick={() => getCurrentLocation()}
+                disabled={isLocating}
+                className={`hidden lg:flex items-center gap-1.5 px-3 py-1.5 rounded-full border transition-all ${
+                  isLocating 
+                    ? 'bg-slate-50 border-slate-200 text-slate-400 dark:bg-slate-800 dark:border-slate-700' 
+                    : 'bg-indigo-50 border-indigo-100 text-indigo-600 hover:bg-indigo-100 dark:bg-indigo-900/20 dark:border-indigo-800 dark:text-indigo-400'
+                }`}
+              >
+                {isLocating ? <Loader2 className="w-3 h-3 animate-spin" /> : <MapPin className="w-3 h-3" />}
+                <span className="text-[10px] font-black uppercase tracking-widest">Cek Lokasi</span>
+              </button>
+            )
           )}
 
-          <button
-            onClick={() => setView(view === 'chat' ? 'quiz' : 'chat')}
-            className={`p-2 rounded-xl transition-all flex items-center gap-2 font-black text-[10px] uppercase tracking-wider ${
-              view === 'quiz'
-                ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-200 dark:shadow-none'
-                : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 hover:text-indigo-600'
-            }`}
-          >
-            {view === 'chat' ? (
-              <>
-                <Plus className="w-4 h-4" />
-                Mode Kuis
-              </>
-            ) : (
-              <>
-                <Bot className="w-4 h-4" />
-                Kembali Chat
-              </>
-            )}
-          </button>
+          {!isFlikcam && (
+            <button
+              onClick={() => setView(view === 'chat' ? 'quiz' : 'chat')}
+              className={`p-2 rounded-xl transition-all flex items-center gap-2 font-black text-[10px] uppercase tracking-wider ${
+                view === 'quiz'
+                  ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-200 dark:shadow-none'
+                  : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 hover:text-indigo-600'
+              }`}
+            >
+              {view === 'chat' ? (
+                <>
+                  <Plus className="w-4 h-4" />
+                  <span className="hidden sm:inline">Mode Kuis</span>
+                </>
+              ) : (
+                <>
+                  <Bot className="w-4 h-4" />
+                  <span className="hidden sm:inline">Kembali Chat</span>
+                </>
+              )}
+            </button>
+          )}
           <button 
             onClick={clearChat}
             className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-all"
@@ -1233,9 +1489,10 @@ export default function App() {
             <Trash2 className="w-5 h-5" />
           </button>
         </div>
-      </header>
+      </div>
+    </header>
 
-      {locationError && (
+      {locationError && !isFlikcam && (
         <div className="max-w-2xl mx-auto mb-4 p-4 bg-orange-50 dark:bg-orange-900/20 border border-orange-100 dark:border-orange-900/50 text-orange-600 dark:text-orange-400 rounded-2xl text-sm text-center font-bold flex items-center justify-center gap-2">
           <AlertCircle className="w-4 h-4" />
           {locationError}
@@ -1253,31 +1510,53 @@ export default function App() {
 
       {/* Chat Area */}
       {view === 'chat' ? (
-        <main className="flex-1 overflow-y-auto p-4 md:p-6 space-y-6 scroll-smooth">
+        <main className={`flex-1 overflow-y-auto p-4 md:p-6 space-y-6 scroll-smooth relative ${
+          isFlikcam ? 'bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-slate-900 via-slate-950 to-black' : ''
+        }`}>
+          {isFlikcam && (
+            <div className="absolute inset-0 pointer-events-none opacity-10 overflow-hidden">
+              <div className="absolute top-0 left-0 w-full h-full bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')]" />
+            </div>
+          )}
+          
           {messages.length === 0 && (
-            <div className="flex flex-col items-center justify-center h-full text-center space-y-8 max-w-md mx-auto">
+            <div className="flex flex-col items-center justify-center h-full text-center space-y-8 max-w-md mx-auto relative z-10">
               <motion.div 
                 initial={{ scale: 0.8, opacity: 0 }}
                 animate={{ scale: 1, opacity: 1 }}
-                className="p-8 bg-indigo-50 dark:bg-indigo-900/20 rounded-[2.5rem] relative"
+                className={`p-8 rounded-[2.5rem] relative ${
+                  isFlikcam ? 'bg-blue-900/20 border border-blue-500/30' : 'bg-indigo-50 dark:bg-indigo-900/20'
+                }`}
               >
-                <Bot className="w-20 h-20 text-indigo-600 dark:text-indigo-400" />
-                <div className="absolute -top-2 -right-2 bg-indigo-600 text-white p-2 rounded-full shadow-lg">
+                {isFlikcam ? (
+                  <Sword className="w-20 h-20 text-blue-400" />
+                ) : (
+                  <Bot className="w-20 h-20 text-indigo-600 dark:text-indigo-400" />
+                )}
+                <div className={`absolute -top-2 -right-2 p-2 rounded-full shadow-lg ${isFlikcam ? 'bg-blue-600 text-white' : 'bg-indigo-600 text-white'}`}>
                   <Sparkles className="w-4 h-4" />
                 </div>
               </motion.div>
               <div className="space-y-3">
-                <h2 className="text-3xl font-black text-slate-800 dark:text-white tracking-tight">Halo, Pelajar!</h2>
-                <p className="text-slate-500 dark:text-slate-400 font-medium">
-                  Saya <span className="text-indigo-600 dark:text-indigo-400 font-bold">AI R.G</span>. Siap membantu belajarmu hari ini. Mau tanya PR apa?
+                <h2 className={`text-3xl font-black tracking-tight uppercase ${isFlikcam ? 'text-blue-100' : 'text-slate-800 dark:text-white'}`}>
+                  {isFlikcam ? 'Show me your motivation' : 'Halo, Pelajar!'}
+                </h2>
+                <p className={`font-medium ${isFlikcam ? 'text-blue-400' : 'text-slate-500 dark:text-slate-400'}`}>
+                  {isFlikcam ? 'Foolishness, Dante. Foolishness. Ask, if you have the power to sustain the answer.' : (
+                    <>Saya <span className="text-indigo-600 dark:text-indigo-400 font-bold">AI R.G</span>. Siap membantu belajarmu hari ini. Mau tanya PR apa?</>
+                  )}
                 </p>
               </div>
               <div className="grid grid-cols-1 gap-3 w-full">
-                {['Jelaskan teori gravitasi', 'Bantu PR Matematika', 'Cara buat esai yang bagus'].map((suggestion) => (
+                {(isFlikcam ? ['Where is the power?', 'Show me your motivation', 'Foolishness'] : ['Jelaskan teori gravitasi', 'Bantu PR Matematika', 'Cara buat esai yang bagus']).map((suggestion) => (
                   <button
                     key={suggestion}
                     onClick={() => { setInput(suggestion); }}
-                    className="p-4 text-sm font-semibold text-slate-600 dark:text-slate-300 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl hover:border-indigo-300 dark:hover:border-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 transition-all text-left shadow-sm"
+                    className={`p-4 text-sm font-semibold transition-all text-left shadow-sm rounded-2xl border ${
+                      isFlikcam 
+                        ? 'text-blue-300 bg-blue-900/20 border-blue-800 hover:border-blue-500 hover:bg-blue-900/40' 
+                        : 'text-slate-600 dark:text-slate-300 bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 hover:border-indigo-300 dark:hover:border-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-900/20'
+                    }`}
                   >
                     "{suggestion}"
                   </button>
@@ -1287,7 +1566,7 @@ export default function App() {
           )}
 
           <AnimatePresence initial={false}>
-            {messages.map((msg, idx) => (
+            {(isFlikcam ? flikcamMessages : messages).map((msg, idx) => (
               <motion.div
                 key={idx}
                 initial={{ opacity: 0, y: 15 }}
@@ -1295,22 +1574,26 @@ export default function App() {
                 className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
               >
                 <div className={`flex gap-3 max-w-[92%] md:max-w-[80%] ${msg.role === 'user' ? 'flex-row-reverse' : 'flex-row'}`}>
-                  <div className={`flex-shrink-0 w-9 h-9 rounded-2xl flex items-center justify-center shadow-md ${
-                    msg.role === 'user' ? 'bg-indigo-600' : 'bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700'
+                  <div className={`flex-shrink-0 w-9 h-9 rounded-2xl flex items-center justify-center shadow-md transition-all duration-500 ${
+                    msg.role === 'user' 
+                      ? (isFlikcam ? 'bg-blue-600' : 'bg-indigo-600') 
+                      : (isFlikcam ? 'bg-slate-900 border border-blue-900/50' : 'bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700')
                   }`}>
-                    {msg.role === 'user' ? <User className="w-5 h-5 text-white" /> : <Bot className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />}
+                    {msg.role === 'user' ? <User className="w-5 h-5 text-white" /> : (isFlikcam ? <Sword className="w-5 h-5 text-blue-400" /> : <Bot className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />)}
                   </div>
                   <div className="group relative">
-                    <div className={`p-5 rounded-3xl shadow-sm ${
+                    <div className={`p-5 shadow-sm transition-all duration-500 ${
                       msg.role === 'user' 
-                        ? 'bg-indigo-600 text-white rounded-tr-none' 
-                        : 'bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 border border-slate-100 dark:border-slate-700 rounded-tl-none'
+                        ? (isFlikcam ? 'bg-blue-900/40 text-blue-50 border-2 border-blue-500/50 rounded-2xl rounded-tr-none shadow-[0_0_15px_rgba(37,99,235,0.2)]' : 'bg-indigo-600 text-white rounded-3xl rounded-tr-none')
+                        : (isFlikcam ? 'bg-slate-900/90 text-blue-100 border-2 border-blue-900/80 rounded-2xl rounded-tl-none backdrop-blur-md shadow-[0_0_20px_rgba(0,0,0,0.5)]' : 'bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 border border-slate-100 dark:border-slate-700 rounded-3xl rounded-tl-none')
                     }`}>
                       {msg.role === 'model' && msg.groundingChunks && msg.groundingChunks.some(c => c.maps) && (
                         <div className="flex flex-col gap-1 mb-3">
-                          <div className="flex items-center gap-1.5 px-2 py-1 bg-green-50 dark:bg-green-900/20 border border-green-100 dark:border-green-900/30 rounded-xl w-fit">
-                            <MapPin className="w-3 h-3 text-green-600 dark:text-green-400" />
-                            <span className="text-[10px] font-black text-green-600 dark:text-green-400 uppercase tracking-wider">Lokasi Akurat</span>
+                          <div className={`flex items-center gap-1.5 px-2 py-1 border rounded-xl w-fit ${
+                            isFlikcam ? 'bg-blue-900/20 border-blue-500/30' : 'bg-green-50 dark:bg-green-900/20 border-green-100 dark:border-green-900/30'
+                          }`}>
+                            <MapPin className={`w-3 h-3 ${isFlikcam ? 'text-blue-400' : 'text-green-600 dark:text-green-400'}`} />
+                            <span className={`text-[10px] font-black uppercase tracking-wider ${isFlikcam ? 'text-blue-400' : 'text-green-600 dark:text-green-400'}`}>Lokasi Akurat</span>
                           </div>
                           {msg.location && (
                             <span className="text-[8px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest ml-1">
@@ -1398,14 +1681,16 @@ export default function App() {
               animate={{ opacity: 1 }}
               className="flex justify-start"
             >
-              <div className="flex gap-4 items-center bg-white dark:bg-slate-800 p-5 rounded-3xl border border-slate-100 dark:border-slate-700 shadow-sm">
+              <div className={`flex gap-4 items-center p-5 rounded-3xl border shadow-sm transition-all duration-500 ${
+                isFlikcam ? 'bg-slate-900/80 border-blue-900/50' : 'bg-white dark:bg-slate-800 border-slate-100 dark:border-slate-700'
+              }`}>
                 <div className="flex space-x-1.5">
-                  <div className="w-2.5 h-2.5 bg-indigo-600 dark:bg-indigo-400 rounded-full animate-bounce [animation-delay:-0.3s]" />
-                  <div className="w-2.5 h-2.5 bg-indigo-600 dark:bg-indigo-400 rounded-full animate-bounce [animation-delay:-0.15s]" />
-                  <div className="w-2.5 h-2.5 bg-indigo-600 dark:bg-indigo-400 rounded-full animate-bounce" />
+                  <div className={`w-2.5 h-2.5 rounded-full animate-bounce [animation-delay:-0.3s] ${isFlikcam ? 'bg-blue-400' : 'bg-indigo-600 dark:bg-indigo-400'}`} />
+                  <div className={`w-2.5 h-2.5 rounded-full animate-bounce [animation-delay:-0.15s] ${isFlikcam ? 'bg-blue-400' : 'bg-indigo-600 dark:bg-indigo-400'}`} />
+                  <div className={`w-2.5 h-2.5 rounded-full animate-bounce ${isFlikcam ? 'bg-blue-400' : 'bg-indigo-600 dark:bg-indigo-400'}`} />
                 </div>
-                <span className="text-xs font-black text-slate-500 dark:text-slate-400 uppercase tracking-widest">
-                  AI R.G sedang menganalisis...
+                <span className={`text-xs font-black uppercase tracking-widest ${isFlikcam ? 'text-blue-400' : 'text-slate-500 dark:text-slate-400'}`}>
+                  {isFlikcam ? 'Vergil is judging...' : 'AI R.G sedang menganalisis...'}
                 </span>
               </div>
             </motion.div>
@@ -1414,28 +1699,30 @@ export default function App() {
           <div ref={messagesEndRef} />
 
           {/* Location Footer - Gemini Style */}
-          <div className="mt-8 mb-4 flex flex-col items-center justify-center gap-2 opacity-60 hover:opacity-100 transition-opacity">
-            <div className="flex items-center gap-2 px-4 py-2 bg-white/50 dark:bg-slate-900/50 rounded-full border border-slate-100 dark:border-slate-800 shadow-sm">
-              <div className={`w-1.5 h-1.5 rounded-full ${userLocation ? 'bg-green-500 animate-pulse' : 'bg-slate-300 dark:bg-slate-700'}`} />
-              <span className="text-[9px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-[0.2em]">
-                {userLocation 
-                  ? `Lokasi: ${userLocation.lat.toFixed(4)}, ${userLocation.lng.toFixed(4)} • Akurasi: ${userLocation.accuracy?.toFixed(0)}m` 
-                  : 'Lokasi lo belum kebaca nih'}
-              </span>
-              <button 
-                onClick={() => getCurrentLocation()}
-                disabled={isLocating}
-                className="ml-2 text-[9px] font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-widest hover:text-indigo-700 transition-colors disabled:opacity-50"
-              >
-                {isLocating ? 'Mencari...' : (userLocation ? 'Perbarui' : 'Aktifkan')}
-              </button>
+          {!isFlikcam && (
+            <div className="mt-8 mb-4 flex flex-col items-center justify-center gap-2 opacity-60 hover:opacity-100 transition-opacity">
+              <div className="flex items-center gap-2 px-4 py-2 bg-white/50 dark:bg-slate-900/50 rounded-full border border-slate-100 dark:border-slate-800 shadow-sm">
+                <div className={`w-1.5 h-1.5 rounded-full ${userLocation ? 'bg-green-500 animate-pulse' : 'bg-slate-300 dark:bg-slate-700'}`} />
+                <span className="text-[9px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-[0.2em]">
+                  {userLocation 
+                    ? `Lokasi: ${userLocation.lat.toFixed(4)}, ${userLocation.lng.toFixed(4)} • Akurasi: ${userLocation.accuracy?.toFixed(0)}m` 
+                    : 'Lokasi lo belum kebaca nih'}
+                </span>
+                <button 
+                  onClick={() => getCurrentLocation()}
+                  disabled={isLocating}
+                  className="ml-2 text-[9px] font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-widest hover:text-indigo-700 transition-colors disabled:opacity-50"
+                >
+                  {isLocating ? 'Mencari...' : (userLocation ? 'Perbarui' : 'Aktifkan')}
+                </button>
+              </div>
+              <p className="text-[8px] text-slate-400 dark:text-slate-600 font-bold uppercase tracking-widest">
+                {userLocation && userLocation.accuracy && userLocation.accuracy > 100 
+                  ? '⚠️ Akurasi rendah. Coba aktifin GPS di HP lo biar lebih pas.' 
+                  : 'AI R.G menggunakan GPS untuk jawaban yang lebih akurat'}
+              </p>
             </div>
-            <p className="text-[8px] text-slate-400 dark:text-slate-600 font-bold uppercase tracking-widest">
-              {userLocation && userLocation.accuracy && userLocation.accuracy > 100 
-                ? '⚠️ Akurasi rendah. Coba aktifin GPS di HP lo biar lebih pas.' 
-                : 'AI R.G menggunakan GPS untuk jawaban yang lebih akurat'}
-            </p>
-          </div>
+          )}
         </main>
       ) : (
         <QuizView 
@@ -1488,7 +1775,9 @@ export default function App() {
 
       {/* Input Area */}
       {view === 'chat' && (
-        <footer className="p-4 md:p-6 bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800">
+        <footer className={`p-4 md:p-6 border-t transition-all duration-500 ${
+          isFlikcam ? 'bg-slate-900/50 border-blue-900/30 backdrop-blur-md' : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800'
+        }`}>
           <div className="max-w-4xl mx-auto relative">
             {/* Magic Menu Popover */}
             <AnimatePresence>
@@ -1497,68 +1786,82 @@ export default function App() {
                   initial={{ opacity: 0, y: 10, scale: 0.95 }}
                   animate={{ opacity: 1, y: 0, scale: 1 }}
                   exit={{ opacity: 0, y: 10, scale: 0.95 }}
-                  className="absolute bottom-full left-0 mb-4 p-2 bg-white dark:bg-slate-800 rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-700 flex gap-2 z-30"
+                  className={`absolute bottom-full left-0 mb-4 p-2 rounded-3xl shadow-2xl border flex gap-2 z-30 ${
+                    isFlikcam ? 'bg-slate-900 border-blue-900/50 shadow-blue-900/40' : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700'
+                  }`}
                 >
                   <button
                     onClick={() => { toggleLiveMode(); setIsMenuOpen(false); }}
                     className={`p-4 rounded-2xl transition-all flex flex-col items-center justify-center gap-1 min-w-[70px] ${
                       isLiveActive 
                         ? 'bg-red-600 text-white animate-pulse' 
-                        : 'bg-slate-50 dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:bg-red-50 dark:hover:bg-red-900/20 hover:text-red-600'
+                        : (isFlikcam ? 'bg-blue-900/40 text-blue-400 border border-blue-500/30 hover:bg-blue-600 hover:text-white' : 'bg-slate-50 dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:bg-red-50 dark:hover:bg-red-900/20 hover:text-red-600')
                     }`}
                   >
                     <Bot className="w-6 h-6" />
                     <span className="text-[10px] font-black uppercase">Live</span>
                   </button>
 
-                  <button
-                    onClick={() => {
-                      setInput('cari info tentang ');
-                      setIsMenuOpen(false);
-                      const textarea = document.querySelector('textarea');
-                      if (textarea) textarea.focus();
-                    }}
-                    className="p-4 rounded-2xl transition-all flex flex-col items-center justify-center gap-1 min-w-[70px] bg-slate-50 dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:bg-blue-50 dark:hover:bg-blue-900/20 hover:text-blue-600"
-                  >
-                    <Search className="w-6 h-6" />
-                    <span className="text-[10px] font-black uppercase">Cari</span>
-                  </button>
+                  {!isFlikcam && (
+                    <>
+                      <button
+                        onClick={() => {
+                          setInput('cari info tentang ');
+                          setIsMenuOpen(false);
+                          const textarea = document.querySelector('textarea');
+                          if (textarea) textarea.focus();
+                        }}
+                        className={`p-4 rounded-2xl transition-all flex flex-col items-center justify-center gap-1 min-w-[70px] ${
+                          isFlikcam ? 'bg-slate-950 text-blue-400 hover:bg-blue-900/20 hover:text-blue-300' : 'bg-slate-50 dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:bg-blue-50 dark:hover:bg-blue-900/20 hover:text-blue-600'
+                        }`}
+                      >
+                        <Search className="w-6 h-6" />
+                        <span className="text-[10px] font-black uppercase">Cari</span>
+                      </button>
 
-                  <button
-                    onClick={() => {
-                      setInput('lokasi terdekat ');
-                      setIsMenuOpen(false);
-                      const textarea = document.querySelector('textarea');
-                      if (textarea) textarea.focus();
-                    }}
-                    className="p-4 rounded-2xl transition-all flex flex-col items-center justify-center gap-1 min-w-[70px] bg-slate-50 dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:bg-green-50 dark:hover:bg-green-900/20 hover:text-green-600"
-                  >
-                    <MapPin className="w-6 h-6" />
-                    <span className="text-[10px] font-black uppercase">Lokasi</span>
-                  </button>
+                      <button
+                        onClick={() => {
+                          setInput('lokasi terdekat ');
+                          setIsMenuOpen(false);
+                          const textarea = document.querySelector('textarea');
+                          if (textarea) textarea.focus();
+                        }}
+                        className={`p-4 rounded-2xl transition-all flex flex-col items-center justify-center gap-1 min-w-[70px] ${
+                          isFlikcam ? 'bg-slate-950 text-blue-400 hover:bg-green-900/20 hover:text-green-400' : 'bg-slate-50 dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:bg-green-50 dark:hover:bg-green-900/20 hover:text-green-600'
+                        }`}
+                      >
+                        <MapPin className="w-6 h-6" />
+                        <span className="text-[10px] font-black uppercase">Lokasi</span>
+                      </button>
+                    </>
+                  )}
 
                   <button
                     onClick={() => { toggleListening(); setIsMenuOpen(false); }}
                     className={`p-4 rounded-2xl transition-all flex flex-col items-center justify-center gap-1 min-w-[70px] ${
                       isListening 
                         ? 'bg-red-500 text-white animate-pulse' 
-                        : 'bg-slate-50 dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 hover:text-indigo-600'
+                        : (isFlikcam ? 'bg-blue-900/40 text-blue-400 border border-blue-500/30 hover:bg-blue-600 hover:text-white' : 'bg-slate-50 dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 hover:text-indigo-600')
                     }`}
                   >
                     {isListening ? <MicOff className="w-6 h-6" /> : <Mic className="w-6 h-6" />}
                     <span className="text-[10px] font-black uppercase">Mic</span>
                   </button>
 
-                  <label className="p-4 rounded-2xl transition-all flex flex-col items-center justify-center gap-1 min-w-[70px] bg-slate-50 dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:bg-orange-50 dark:hover:bg-orange-900/20 hover:text-orange-600 cursor-pointer">
-                    <input 
-                      type="file" 
-                      accept="application/pdf" 
-                      className="hidden" 
-                      onChange={(e) => { handleFileUpload(e); setIsMenuOpen(false); }}
-                    />
-                    <FileText className="w-6 h-6" />
-                    <span className="text-[10px] font-black uppercase">PDF</span>
-                  </label>
+                  {!isFlikcam && (
+                    <label className={`p-4 rounded-2xl transition-all flex flex-col items-center justify-center gap-1 min-w-[70px] cursor-pointer ${
+                      isFlikcam ? 'bg-slate-950 text-blue-400 hover:bg-orange-900/20 hover:text-orange-400' : 'bg-slate-50 dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:bg-orange-50 dark:hover:bg-orange-900/20 hover:text-orange-600'
+                    }`}>
+                      <input 
+                        type="file" 
+                        accept="application/pdf" 
+                        className="hidden" 
+                        onChange={(e) => { handleFileUpload(e); setIsMenuOpen(false); }}
+                      />
+                      <FileText className="w-6 h-6" />
+                      <span className="text-[10px] font-black uppercase">PDF</span>
+                    </label>
+                  )}
                 </motion.div>
               )}
             </AnimatePresence>
@@ -1568,20 +1871,22 @@ export default function App() {
               <motion.div 
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
-                className="flex items-center justify-between p-3 mb-3 bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-800 rounded-xl"
+                className={`flex items-center justify-between p-3 mb-3 border rounded-xl ${
+                  isFlikcam ? 'bg-blue-900/20 border-blue-800' : 'bg-indigo-50 dark:bg-indigo-900/20 border-indigo-200 dark:border-indigo-800'
+                }`}
               >
                 <div className="flex items-center gap-3 overflow-hidden">
-                  <div className="p-2 bg-indigo-600 rounded-lg">
+                  <div className={`p-2 rounded-lg ${isFlikcam ? 'bg-blue-600' : 'bg-indigo-600'}`}>
                     <FileText className="w-4 h-4 text-white" />
                   </div>
                   <div className="flex flex-col truncate">
-                    <span className="text-xs font-black text-slate-800 dark:text-slate-200 truncate">{pdfFileName}</span>
-                    <span className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-widest">Materi Siap Dikirim</span>
+                    <span className={`text-xs font-black truncate ${isFlikcam ? 'text-blue-100' : 'text-slate-800 dark:text-slate-200'}`}>{pdfFileName}</span>
+                    <span className={`text-[10px] font-bold uppercase tracking-widest ${isFlikcam ? 'text-blue-400' : 'text-indigo-600 dark:text-indigo-400'}`}>Materi Siap Dikirim</span>
                   </div>
                 </div>
                 <button 
                   onClick={() => { setPdfContent(null); setPdfFileName(null); }}
-                  className="p-2 hover:bg-indigo-100 dark:hover:bg-indigo-800 rounded-lg text-indigo-600 transition-colors"
+                  className={`p-2 rounded-lg transition-colors ${isFlikcam ? 'text-blue-400 hover:bg-blue-900/40' : 'text-indigo-600 hover:bg-indigo-100 dark:hover:bg-indigo-800'}`}
                 >
                   <X className="w-4 h-4" />
                 </button>
@@ -1595,13 +1900,17 @@ export default function App() {
                 animate={{ opacity: 1, y: 0 }}
                 className="flex gap-2 mb-3 overflow-x-auto pb-1 no-scrollbar"
               >
-                {[
+                {(isFlikcam ? [
+                  { label: 'Cari Kekuatan ⚔️', text: 'dimana kekuatan absolut?' },
+                  { label: 'Motivasi ⚡', text: 'tunjukkan motivasimu' },
+                  { label: 'Kebodohan ❄️', text: 'foolishness' }
+                ] : [
                   { label: 'Cari di Internet 🌐', text: 'cari info tentang ' },
                   { label: 'Cari Lokasi 📍', text: 'lokasi terdekat ' },
                   { label: 'Tanya Tugas 📚', text: 'jelasin tentang ' },
                   { label: 'Ngobrol Santai 💬', text: 'halo rg, apa kabar?' },
                   { label: 'Cek Cuaca 🌤️', text: 'cuaca hari ini gimana?' }
-                ].map((chip, i) => (
+                ]).map((chip, i) => (
                   <button
                     key={i}
                     onClick={() => {
@@ -1609,24 +1918,28 @@ export default function App() {
                       const textarea = document.querySelector('textarea');
                       if (textarea) textarea.focus();
                     }}
-                    className="whitespace-nowrap px-4 py-1.5 bg-slate-100 dark:bg-slate-800 hover:bg-indigo-100 dark:hover:bg-indigo-900/30 text-slate-600 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 rounded-full text-xs font-bold transition-all border border-transparent hover:border-indigo-200 dark:hover:border-indigo-800"
+                    className={`whitespace-nowrap px-4 py-1.5 text-xs font-bold transition-all border ${
+                      isFlikcam 
+                        ? 'bg-blue-950/50 border-blue-500/30 text-blue-400 hover:bg-blue-600 hover:text-white hover:border-blue-400 rounded-none skew-x-[-12deg] shadow-[0_0_10px_rgba(37,99,235,0.2)]' 
+                        : 'bg-slate-100 dark:bg-slate-800 border-transparent hover:border-indigo-200 dark:hover:border-indigo-800 text-slate-600 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 rounded-full'
+                    }`}
                   >
-                    {chip.label}
+                    <span className={isFlikcam ? 'inline-block skew-x-[12deg]' : ''}>{chip.label}</span>
                   </button>
                 ))}
               </motion.div>
             )}
 
-            <div className="flex gap-3 items-end">
+            <div className="flex flex-col sm:flex-row gap-3 items-end">
               <button
                 onClick={() => setIsMenuOpen(!isMenuOpen)}
-                className={`p-4 rounded-2xl transition-all shadow-lg flex items-center justify-center ${
+                className={`p-3 sm:p-4 transition-all shadow-lg flex items-center justify-center ${
                   isMenuOpen 
-                    ? 'bg-slate-800 dark:bg-white text-white dark:text-slate-900 rotate-45' 
-                    : 'bg-indigo-600 text-white hover:bg-indigo-700'
+                    ? (isFlikcam ? 'bg-blue-600 text-white rotate-45 shadow-blue-500/50 rounded-none' : 'bg-slate-800 dark:bg-white text-white dark:text-slate-900 rotate-45 rounded-2xl')
+                    : (isFlikcam ? 'bg-blue-900/40 text-blue-100 hover:bg-blue-800 shadow-blue-900/40 border border-blue-500/30 rounded-none skew-x-[-12deg]' : 'bg-indigo-600 text-white hover:bg-indigo-700 rounded-2xl')
                 }`}
               >
-                <Plus className="w-6 h-6" />
+                <Plus className={`w-5 h-5 sm:w-6 sm:h-6 ${isFlikcam ? 'skew-x-[12deg]' : ''}`} />
               </button>
 
               <div className="flex-1 relative">
@@ -1640,16 +1953,20 @@ export default function App() {
                       handleSend();
                     }
                   }}
-                  placeholder="Tanyakan PR atau materi pelajaran..."
-                  className="w-full p-4 pr-14 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl focus:outline-none focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 dark:focus:border-indigo-400 transition-all resize-none max-h-32 shadow-inner font-medium text-slate-800 dark:text-slate-100"
+                  placeholder={isFlikcam ? "Show me your motivation..." : "Tanyakan PR atau materi pelajaran..."}
+                  className={`w-full p-4 pr-14 border focus:outline-none focus:ring-4 transition-all resize-none max-h-32 shadow-inner font-medium ${
+                    isFlikcam 
+                      ? 'bg-slate-950/90 border-blue-500/50 text-blue-100 focus:ring-blue-500/20 focus:border-blue-400 placeholder-blue-900/50 rounded-none shadow-[inset_0_0_20px_rgba(37,99,235,0.1)]' 
+                      : 'bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 focus:ring-indigo-500/10 focus:border-indigo-500 dark:focus:border-indigo-400 placeholder-slate-400 dark:placeholder-slate-500 rounded-2xl'
+                  }`}
                 />
                 <button
                   onClick={() => handleSend()}
                   disabled={!input.trim() || isLoading}
-                  className={`absolute right-2 bottom-2 p-2.5 rounded-xl transition-all ${
+                  className={`absolute right-2 bottom-2 p-2.5 transition-all ${
                     !input.trim() || isLoading 
-                      ? 'text-slate-300 dark:text-slate-600 bg-slate-100 dark:bg-slate-700' 
-                      : 'text-white bg-indigo-600 hover:bg-indigo-700 shadow-lg shadow-indigo-100 dark:shadow-none active:scale-95'
+                      ? (isFlikcam ? 'text-blue-900 bg-slate-900 rounded-none' : 'text-slate-300 dark:text-slate-600 bg-slate-100 dark:bg-slate-700 rounded-xl')
+                      : (isFlikcam ? 'text-white bg-blue-600 hover:bg-blue-700 shadow-[0_0_15px_rgba(37,99,235,0.5)] rounded-none' : 'text-white bg-indigo-600 hover:bg-indigo-700 shadow-lg shadow-indigo-100 dark:shadow-none active:scale-95 rounded-xl')
                   }`}
                 >
                   <Send className="w-5 h-5" />
@@ -1657,8 +1974,10 @@ export default function App() {
               </div>
             </div>
           </div>
-          <p className="text-[10px] text-center text-slate-400 dark:text-slate-500 mt-3 font-bold uppercase tracking-widest">
-            AI R.G • Sahabat Belajar Siswa Masa Depan
+          <p className={`text-[10px] text-center mt-3 font-bold uppercase tracking-widest transition-colors duration-500 ${
+            isFlikcam ? 'text-blue-900' : 'text-slate-400 dark:text-slate-500'
+          }`}>
+            {isFlikcam ? 'FLIKCAM • POWER SHALL BE ABSOLUTE' : 'AI R.G • Sahabat Belajar Siswa Masa Depan'}
           </p>
         </footer>
       )}
