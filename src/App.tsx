@@ -410,11 +410,16 @@ export default function App() {
 
   // Background Video Logic
   useEffect(() => {
-    if (videoRef.current) {
+    const video = videoRef.current;
+    if (video) {
       if (isFlikcam && !isLiveActive) {
-        videoRef.current.play().catch(e => console.log("Video play blocked", e));
+        // Force reload and play when entering Flikcam mode
+        video.src = "https://docs.google.com/uc?export=download&id=1fzEXPE4PijbLepGlDXf4svlPkmjhgU0S";
+        video.load();
+        video.play().catch(e => console.log("Video play blocked", e));
       } else {
-        videoRef.current.pause();
+        video.pause();
+        video.src = ""; // Clear src when not in use to save bandwidth
       }
     }
   }, [isFlikcam, isLiveActive]);
@@ -1241,9 +1246,7 @@ export default function App() {
             playsInline
             autoPlay
             className="absolute inset-0 w-full h-full object-cover opacity-40 transition-opacity duration-1000"
-          >
-            <source src="https://drive.google.com/uc?id=1fzEXPE4PijbLepGlDXf4svlPkmjhgU0S&export=download" type="video/mp4" />
-          </video>
+          />
           
           {/* Neon Grid Pattern */}
           <div className="absolute inset-0 opacity-[0.05]" style={{ backgroundImage: 'linear-gradient(45deg, #2563eb 1px, transparent 1px), linear-gradient(-45deg, #2563eb 1px, transparent 1px)', backgroundSize: '40px 40px' }} />
