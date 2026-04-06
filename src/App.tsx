@@ -382,6 +382,18 @@ export default function App() {
   const [isFlikcam, setIsFlikcam] = useState(false);
   const [isMusicOn, setIsMusicOn] = useState(true);
   const musicRef = useRef<HTMLAudioElement | null>(null);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+
+  // Background Video Logic
+  useEffect(() => {
+    if (videoRef.current) {
+      if (isFlikcam && !isLiveActive) {
+        videoRef.current.play().catch(e => console.log("Video play blocked", e));
+      } else {
+        videoRef.current.pause();
+      }
+    }
+  }, [isFlikcam, isLiveActive]);
 
   // Background Music Logic
   useEffect(() => {
@@ -1197,6 +1209,16 @@ export default function App() {
     }`}>
       {isFlikcam && (
         <div className="absolute inset-0 pointer-events-none z-0 overflow-hidden">
+          {/* Video Background */}
+          <video
+            ref={videoRef}
+            src="/vergil.mp4"
+            loop
+            muted
+            playsInline
+            className="absolute inset-0 w-full h-full object-cover opacity-40 transition-opacity duration-1000"
+          />
+          
           {/* Neon Grid Pattern */}
           <div className="absolute inset-0 opacity-[0.05]" style={{ backgroundImage: 'linear-gradient(45deg, #2563eb 1px, transparent 1px), linear-gradient(-45deg, #2563eb 1px, transparent 1px)', backgroundSize: '40px 40px' }} />
           
