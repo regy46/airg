@@ -1236,13 +1236,14 @@ export default function App() {
           {/* Video Background */}
           <video
             ref={videoRef}
-            src="https://docs.google.com/uc?id=1fzEXPE4PijbLepGlDXf4svlPkmjhgU0S"
             loop
             muted
             playsInline
-            crossOrigin="anonymous"
+            autoPlay
             className="absolute inset-0 w-full h-full object-cover opacity-40 transition-opacity duration-1000"
-          />
+          >
+            <source src="https://drive.google.com/uc?id=1fzEXPE4PijbLepGlDXf4svlPkmjhgU0S&export=download" type="video/mp4" />
+          </video>
           
           {/* Neon Grid Pattern */}
           <div className="absolute inset-0 opacity-[0.05]" style={{ backgroundImage: 'linear-gradient(45deg, #2563eb 1px, transparent 1px), linear-gradient(-45deg, #2563eb 1px, transparent 1px)', backgroundSize: '40px 40px' }} />
