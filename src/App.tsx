@@ -333,6 +333,30 @@ function QuizView({
   );
 }
 
+// Custom Yamato (Katana) Icon Component
+const YamatoIcon = ({ className }: { className?: string }) => (
+  <svg 
+    viewBox="0 0 24 24" 
+    fill="none" 
+    stroke="currentColor" 
+    strokeWidth="1.5" 
+    strokeLinecap="round" 
+    strokeLinejoin="round" 
+    className={className}
+  >
+    {/* Blade */}
+    <path d="M5 19L19 5" strokeWidth="2" />
+    {/* Blade Curve/Edge */}
+    <path d="M6 18L18 6" opacity="0.5" />
+    {/* Tsuba (Guard) */}
+    <path d="M4 16L8 20" strokeWidth="2.5" />
+    {/* Handle (Tsuka) */}
+    <path d="M2 22L5 19" strokeWidth="3" />
+    {/* Sheath Detail */}
+    <circle cx="3.5" cy="20.5" r="0.5" fill="currentColor" />
+  </svg>
+);
+
 export default function App() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [flikcamMessages, setFlikcamMessages] = useState<Message[]>([]);
@@ -1284,7 +1308,7 @@ export default function App() {
                   ? 'bg-blue-900 shadow-[0_0_60px_rgba(37,99,235,0.6)] border-2 border-blue-400/50' 
                   : 'bg-indigo-600 shadow-[0_0_50px_rgba(79,70,229,0.5)]'
               }`}>
-                {isFlikcam ? <Sword className="w-16 h-16 text-blue-200 relative z-10" /> : <Bot className="w-16 h-16 text-white relative z-10" />}
+                {isFlikcam ? <YamatoIcon className="w-16 h-16 text-blue-400 relative z-10 animate-pulse" /> : <Bot className="w-16 h-16 text-white relative z-10" />}
                 {/* Dynamic Background based on volume */}
                 <motion.div 
                   animate={{ scale: 1 + micVolume }}
@@ -1375,7 +1399,7 @@ export default function App() {
               ? 'bg-blue-900 shadow-blue-500/20' 
               : 'bg-indigo-600 shadow-indigo-200 dark:shadow-none'
           }`}>
-            {isFlikcam ? <Sword className="w-5 h-5 sm:w-6 sm:h-6 text-blue-200" /> : <GraduationCap className="w-5 h-5 sm:w-6 sm:h-6 text-white" />}
+            {isFlikcam ? <YamatoIcon className="w-5 h-5 sm:w-6 sm:h-6 text-blue-400 animate-pulse" /> : <GraduationCap className="w-5 h-5 sm:w-6 sm:h-6 text-white" />}
           </div>
           <div className="hidden xs:block">
             <h1 className={`text-lg sm:text-xl font-black tracking-tighter uppercase transition-colors duration-500 ${
@@ -1551,7 +1575,7 @@ export default function App() {
                 }`}
               >
                 {isFlikcam ? (
-                  <Sword className="w-20 h-20 text-blue-400" />
+                  <YamatoIcon className="w-20 h-20 text-blue-500 animate-pulse" />
                 ) : (
                   <Bot className="w-20 h-20 text-indigo-600 dark:text-indigo-400" />
                 )}
@@ -1601,7 +1625,7 @@ export default function App() {
                       ? (isFlikcam ? 'bg-blue-600' : 'bg-indigo-600') 
                       : (isFlikcam ? 'bg-slate-900 border border-blue-900/50' : 'bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700')
                   }`}>
-                    {msg.role === 'user' ? <User className="w-5 h-5 text-white" /> : (isFlikcam ? <Sword className="w-5 h-5 text-blue-400" /> : <Bot className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />)}
+                    {msg.role === 'user' ? <User className="w-5 h-5 text-white" /> : (isFlikcam ? <YamatoIcon className="w-5 h-5 text-blue-400" /> : <Bot className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />)}
                   </div>
                   <div className="group relative">
                     <div className={`p-5 shadow-sm transition-all duration-500 ${
