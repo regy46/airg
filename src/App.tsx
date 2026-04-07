@@ -1686,21 +1686,6 @@ export default function App() {
                   )}
                 </p>
               </div>
-              <div className="grid grid-cols-1 gap-3 w-full">
-                {(isFlikcam ? ['Where is the power?', 'Show me your motivation', 'I need more power!'] : ['Jelaskan teori gravitasi', 'Bantu PR Matematika', 'Cara buat esai yang bagus']).map((suggestion) => (
-                  <button
-                    key={suggestion}
-                    onClick={() => { setInput(suggestion); }}
-                    className={`p-4 text-sm font-semibold transition-all text-left shadow-sm rounded-2xl border ${
-                      isFlikcam 
-                        ? 'text-blue-600 bg-white border-blue-200 hover:border-blue-500 hover:bg-blue-50' 
-                        : 'text-slate-600 dark:text-slate-300 bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 hover:border-indigo-300 dark:hover:border-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-900/20'
-                    }`}
-                  >
-                    "{suggestion}"
-                  </button>
-                ))}
-              </div>
             </div>
           )}
 
@@ -2033,42 +2018,7 @@ export default function App() {
               </motion.div>
             )}
 
-            {/* Quick Action Chips */}
-            {!input && !isLoading && (
-              <motion.div 
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="flex gap-2 mb-3 overflow-x-auto pb-1 no-scrollbar"
-              >
-                {(isFlikcam ? [
-                  { label: 'Cari Kekuatan ⚔️', text: 'dimana kekuatan absolut?' },
-                  { label: 'Motivasi ⚡', text: 'tunjukkan motivasimu' },
-                  { label: 'Kebodohan ❄️', text: 'foolishness' }
-                ] : [
-                  { label: 'Cari di Internet 🌐', text: 'cari info tentang ' },
-                  { label: 'Cari Lokasi 📍', text: 'lokasi terdekat ' },
-                  { label: 'Tanya Tugas 📚', text: 'jelasin tentang ' },
-                  { label: 'Ngobrol Santai 💬', text: 'halo rg, apa kabar?' },
-                  { label: 'Cek Cuaca 🌤️', text: 'cuaca hari ini gimana?' }
-                ]).map((chip, i) => (
-                  <button
-                    key={i}
-                    onClick={() => {
-                      setInput(chip.text);
-                      const textarea = document.querySelector('textarea');
-                      if (textarea) textarea.focus();
-                    }}
-                    className={`whitespace-nowrap px-4 py-1.5 text-xs font-bold transition-all border ${
-                      isFlikcam 
-                        ? 'bg-white border-blue-200 text-blue-600 hover:bg-blue-600 hover:text-white hover:border-blue-400 rounded-none skew-x-[-12deg] shadow-sm' 
-                        : 'bg-slate-100 dark:bg-slate-800 border-transparent hover:border-indigo-200 dark:hover:border-indigo-800 text-slate-600 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 rounded-full'
-                    }`}
-                  >
-                    <span className={isFlikcam ? 'inline-block skew-x-[12deg]' : ''}>{chip.label}</span>
-                  </button>
-                ))}
-              </motion.div>
-            )}
+            {/* Quick Action Chips Removed */}
 
             <div className="flex items-end gap-2 sm:gap-3">
               <button
