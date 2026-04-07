@@ -1978,23 +1978,27 @@ export default function App() {
               </motion.div>
             )}
 
-            <div className="flex flex-row gap-2 sm:gap-3 items-end">
+            <div className="flex flex-row gap-2 items-end">
               <button
                 onClick={() => setIsMenuOpen(!isMenuOpen)}
-                className={`flex-shrink-0 p-3 sm:p-4 transition-all shadow-lg flex items-center justify-center ${
+                className={`flex-shrink-0 w-11 h-11 transition-all shadow-md flex items-center justify-center ${
                   isMenuOpen 
                     ? (isFlikcam ? 'bg-blue-600 text-white rotate-45 shadow-blue-500/50 rounded-none' : 'bg-slate-800 dark:bg-white text-white dark:text-slate-900 rotate-45 rounded-2xl')
                     : (isFlikcam ? 'bg-blue-900/40 text-blue-100 hover:bg-blue-800 shadow-blue-900/40 border border-blue-500/30 rounded-none skew-x-[-12deg]' : 'bg-indigo-600 text-white hover:bg-indigo-700 rounded-2xl')
                 }`}
               >
-                <Plus className={`w-5 h-5 sm:w-6 sm:h-6 ${isFlikcam ? 'skew-x-[12deg]' : ''}`} />
+                <Plus className={`w-5 h-5 ${isFlikcam ? 'skew-x-[12deg]' : ''}`} />
               </button>
 
-              <div className="flex-1 min-w-0 relative">
+              <div className="flex-1 min-w-0 flex items-end gap-2 border rounded-2xl px-3 py-2 shadow-sm transition-all focus-within:ring-2 focus-within:ring-indigo-500/20 focus-within:border-indigo-400 dark:focus-within:border-indigo-500 bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700">
                 <textarea
                   rows={1}
                   value={input}
-                  onChange={(e) => setInput(e.target.value)}
+                  onChange={(e) => {
+                    setInput(e.target.value);
+                    e.target.style.height = 'auto';
+                    e.target.style.height = Math.min(e.target.scrollHeight, 120) + 'px';
+                  }}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' && !e.shiftKey) {
                       e.preventDefault();
@@ -2002,22 +2006,22 @@ export default function App() {
                     }
                   }}
                   placeholder={isFlikcam ? "Show me your motivation..." : "Tanyakan PR atau materi pelajaran..."}
-                  className={`w-full p-4 pr-14 border focus:outline-none focus:ring-4 transition-all resize-none max-h-32 shadow-inner font-medium ${
+                  className={`flex-1 min-w-0 bg-transparent border-none outline-none resize-none text-sm font-medium leading-relaxed max-h-28 py-1 ${
                     isFlikcam 
-                      ? 'bg-slate-950/90 border-blue-500/50 text-blue-100 focus:ring-blue-500/20 focus:border-blue-400 placeholder-blue-900/50 rounded-none shadow-[inset_0_0_20px_rgba(37,99,235,0.1)]' 
-                      : 'bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 focus:ring-indigo-500/10 focus:border-indigo-500 dark:focus:border-indigo-400 placeholder-slate-400 dark:placeholder-slate-500 rounded-2xl'
+                      ? 'text-blue-100 placeholder-blue-900/60' 
+                      : 'text-slate-800 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500'
                   }`}
                 />
                 <button
                   onClick={() => handleSend()}
                   disabled={!input.trim() || isLoading}
-                  className={`absolute right-2 bottom-2 p-2.5 transition-all ${
+                  className={`flex-shrink-0 w-9 h-9 flex items-center justify-center transition-all rounded-xl ${
                     !input.trim() || isLoading 
-                      ? (isFlikcam ? 'text-blue-900 bg-slate-900 rounded-none' : 'text-slate-300 dark:text-slate-600 bg-slate-100 dark:bg-slate-700 rounded-xl')
-                      : (isFlikcam ? 'text-white bg-blue-600 hover:bg-blue-700 shadow-[0_0_15px_rgba(37,99,235,0.5)] rounded-none' : 'text-white bg-indigo-600 hover:bg-indigo-700 shadow-lg shadow-indigo-100 dark:shadow-none active:scale-95 rounded-xl')
+                      ? (isFlikcam ? 'text-blue-900 bg-slate-900 rounded-none' : 'text-slate-300 dark:text-slate-600 bg-slate-100 dark:bg-slate-700')
+                      : (isFlikcam ? 'text-white bg-blue-600 hover:bg-blue-700 shadow-[0_0_15px_rgba(37,99,235,0.5)] rounded-none' : 'text-white bg-indigo-600 hover:bg-indigo-700 shadow-md active:scale-95')
                   }`}
                 >
-                  <Send className="w-5 h-5" />
+                  <Send className="w-4 h-4" />
                 </button>
               </div>
             </div>
