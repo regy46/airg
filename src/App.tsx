@@ -44,7 +44,50 @@ interface QuizViewProps {
   handleFileUpload: (e: ChangeEvent<HTMLInputElement>) => void;
   setError: (error: string | null) => void;
   setView: (view: 'chat' | 'quiz') => void;
+  isFlikcam: boolean;
 }
+
+// Samurai Yamato Icon (Vergil's Sword)
+const YamatoIcon = ({ className = "w-6 h-6" }: { className?: string }) => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className={className}>
+    {/* Blade */}
+    <path d="M5 19L19 5" strokeWidth="2" />
+    {/* Blade Curve/Edge */}
+    <path d="M6 18L18 6" opacity="0.5" />
+    {/* Tsuba (Guard) */}
+    <path d="M4 16L8 20" strokeWidth="2.5" />
+    {/* Handle (Tsuka) */}
+    <path d="M2 22L5 19" strokeWidth="3" />
+    {/* Sheath Detail */}
+    <circle cx="3.5" cy="20.5" r="0.5" fill="currentColor" />
+  </svg>
+);
+
+// Sword Slash Decorative Component
+const SwordSlash = ({ className = "" }: { className?: string }) => (
+  <div className={`absolute pointer-events-none overflow-hidden ${className}`}>
+    <motion.div 
+      initial={{ scaleX: 0, opacity: 0, x: -100 }}
+      animate={{ 
+        scaleX: [0, 1.5, 0], 
+        opacity: [0, 1, 0],
+        x: [-100, 100]
+      }}
+      transition={{ duration: 0.3, repeat: Infinity, repeatDelay: 4 }}
+      className="w-full h-[2px] bg-gradient-to-r from-transparent via-blue-400 to-transparent rotate-[-15deg] origin-left shadow-[0_0_10px_rgba(37,99,235,0.5)]"
+    />
+  </div>
+);
+
+// Vergil Aura Decoration
+const VergilAura = () => (
+  <div className="absolute inset-0 pointer-events-none overflow-hidden z-0">
+    <div className="absolute top-[-20%] left-[-10%] w-[60%] h-[60%] bg-blue-50/40 dark:bg-blue-900/5 blur-[120px] rounded-full animate-pulse" />
+    <div className="absolute bottom-[-20%] right-[-10%] w-[60%] h-[60%] bg-slate-100/40 dark:bg-slate-800/5 blur-[120px] rounded-full" />
+    {/* Samurai Pattern */}
+    <div className="absolute inset-0 opacity-[0.03] dark:opacity-[0.02]" style={{ backgroundImage: 'radial-gradient(#2563eb 0.5px, transparent 0.5px)', backgroundSize: '24px 24px' }} />
+  </div>
+);
 
 function QuizView({ 
   pdfContent, 
@@ -54,7 +97,8 @@ function QuizView({
   isExtractingPdf, 
   handleFileUpload, 
   setError,
-  setView
+  setView,
+  isFlikcam
 }: QuizViewProps) {
   const [quizTopic, setQuizTopic] = useState('');
   const [questions, setQuestions] = useState<any[]>([]);
@@ -136,31 +180,45 @@ function QuizView({
   };
 
   return (
-    <main className="flex-1 overflow-y-auto p-4 md:p-8 bg-slate-50 dark:bg-slate-950">
-      <div className="max-w-2xl mx-auto">
+    <main className={`flex-1 overflow-y-auto p-4 md:p-8 relative ${
+      isFlikcam ? 'bg-slate-50' : 'bg-white dark:bg-slate-950'
+    }`}>
+      {/* Vergil Theme Background Elements (Quiz) */}
+      <VergilAura />
+
+      <div className="max-w-2xl mx-auto relative z-10">
         {!questions.length && !isGenerating && (
           <motion.div 
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            className="bg-white dark:bg-slate-900 p-8 rounded-[2.5rem] shadow-xl border border-slate-100 dark:border-slate-800 text-center space-y-6"
+            className={`p-8 rounded-[2.5rem] shadow-2xl border text-center space-y-6 relative overflow-hidden ${
+              isFlikcam ? 'bg-white border-blue-100' : 'bg-white dark:bg-slate-900 border-slate-100 dark:border-slate-800'
+            }`}
           >
-            <div className="w-20 h-20 bg-indigo-100 dark:bg-indigo-900/30 rounded-3xl flex items-center justify-center mx-auto">
-              <GraduationCap className="w-10 h-10 text-indigo-600 dark:text-indigo-400" />
+            {/* Samurai Accent */}
+            <div className="absolute -top-6 -right-6 opacity-5 rotate-12">
+              <YamatoIcon className="w-32 h-32 text-blue-600" />
             </div>
-            <div className="space-y-2">
-              <h2 className="text-2xl font-black text-slate-800 dark:text-white">Mode Kuis AI R.G</h2>
-              <p className="text-slate-500 dark:text-slate-400 font-medium">Masukkan materi pelajaran yang mau kamu uji pemahamannya.</p>
+
+            <div className={`w-20 h-20 rounded-3xl flex items-center justify-center mx-auto relative z-10 ${
+              isFlikcam ? 'bg-blue-50' : 'bg-blue-100 dark:bg-blue-900/30'
+            }`}>
+              <YamatoIcon className="w-10 h-10 text-blue-600 dark:text-blue-400" />
             </div>
-              <div className="space-y-4">
+            <div className="space-y-2 relative z-10">
+              <h2 className={`text-2xl font-black uppercase tracking-tighter ${isFlikcam ? 'text-slate-900' : 'text-slate-800 dark:text-white'}`}>Vergil Quiz Mode</h2>
+              <p className={`font-medium italic ${isFlikcam ? 'text-blue-600' : 'text-slate-500 dark:text-slate-400'}`}>"Show me your motivation."</p>
+            </div>
+              <div className="space-y-4 relative z-10">
                 {pdfFileName ? (
-                  <div className="p-5 bg-indigo-50 dark:bg-indigo-900/20 border-2 border-indigo-500 border-dashed rounded-2xl flex items-center justify-between">
+                  <div className="p-5 bg-blue-50 dark:bg-blue-900/20 border-2 border-blue-500 border-dashed rounded-2xl flex items-center justify-between">
                     <div className="flex items-center gap-3 overflow-hidden">
-                      <FileText className="w-6 h-6 text-indigo-600 flex-shrink-0" />
+                      <FileText className="w-6 h-6 text-blue-600 flex-shrink-0" />
                       <span className="text-sm font-bold text-slate-700 dark:text-slate-200 truncate">{pdfFileName}</span>
                     </div>
                     <button 
                       onClick={() => { setPdfContent(null); setPdfFileName(null); }}
-                      className="p-1 hover:bg-indigo-100 dark:hover:bg-indigo-800 rounded-lg text-indigo-600"
+                      className="p-1 hover:bg-blue-100 dark:hover:bg-blue-800 rounded-lg text-blue-600"
                     >
                       <X className="w-5 h-5" />
                     </button>
@@ -171,7 +229,7 @@ function QuizView({
                     value={quizTopic}
                     onChange={(e) => setQuizTopic(e.target.value)}
                     placeholder="Contoh: Fotosintesis, Sejarah Indonesia, Aljabar..."
-                    className="w-full p-5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl focus:ring-2 focus:ring-indigo-500 outline-none transition-all font-bold text-slate-800 dark:text-white"
+                    className="w-full p-5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl focus:ring-2 focus:ring-blue-500 outline-none transition-all font-bold text-slate-800 dark:text-white"
                   />
                 )}
 
@@ -183,7 +241,7 @@ function QuizView({
                       className="hidden" 
                       onChange={handleFileUpload}
                     />
-                    <div className="w-full py-5 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-2 border-slate-200 dark:border-slate-700 rounded-2xl font-black uppercase tracking-widest flex items-center justify-center gap-3 cursor-pointer hover:border-indigo-500 hover:text-indigo-600 transition-all">
+                    <div className="w-full py-5 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-2 border-slate-200 dark:border-slate-700 rounded-2xl font-black uppercase tracking-widest flex items-center justify-center gap-3 cursor-pointer hover:border-blue-500 hover:text-blue-600 transition-all">
                       <Upload className="w-5 h-5" />
                       Upload PDF
                     </div>
@@ -191,10 +249,10 @@ function QuizView({
                   <button 
                     onClick={generateQuiz}
                     disabled={(!quizTopic.trim() && !pdfContent) || isExtractingPdf}
-                    className="flex-[2] py-5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-2xl font-black uppercase tracking-widest shadow-lg shadow-indigo-200 dark:shadow-none transition-all flex items-center justify-center gap-3"
+                    className="flex-[2] py-5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-2xl font-black uppercase tracking-widest shadow-lg shadow-blue-200 dark:shadow-none transition-all flex items-center justify-center gap-3"
                   >
                     {isExtractingPdf ? <Loader2 className="w-5 h-5 animate-spin" /> : <Sparkles className="w-5 h-5" />}
-                    Buat Kuis Sekarang
+                    Generate Quiz
                   </button>
                 </div>
               </div>
@@ -203,8 +261,8 @@ function QuizView({
 
         {isGenerating && (
           <div className="flex flex-col items-center justify-center h-64 space-y-4">
-            <Loader2 className="w-12 h-12 text-indigo-600 animate-spin" />
-            <p className="text-slate-500 dark:text-slate-400 font-black uppercase tracking-widest text-xs">AI R.G sedang meracik kuis untukmu...</p>
+            <Loader2 className="w-12 h-12 text-blue-600 animate-spin" />
+            <p className="text-slate-500 dark:text-slate-400 font-black uppercase tracking-widest text-xs">Vergil sedang meracik kuis untukmu...</p>
           </div>
         )}
 
@@ -214,7 +272,7 @@ function QuizView({
               <span className="text-xs font-black text-slate-400 uppercase tracking-widest">Pertanyaan {currentIndex + 1} dari {questions.length}</span>
               <div className="h-2 w-32 bg-slate-200 dark:bg-slate-800 rounded-full overflow-hidden">
                 <div 
-                  className="h-full bg-indigo-600 transition-all duration-500" 
+                  className="h-full bg-blue-600 transition-all duration-500" 
                   style={{ width: `${((currentIndex + 1) / questions.length) * 100}%` }}
                 />
               </div>
@@ -224,15 +282,27 @@ function QuizView({
               key={currentIndex}
               initial={{ opacity: 0, x: 20 }}
               animate={{ opacity: 1, x: 0 }}
-              className="bg-white dark:bg-slate-900 p-8 rounded-[2.5rem] shadow-xl border border-slate-100 dark:border-slate-800 space-y-8"
+              className={`p-8 rounded-[2.5rem] shadow-xl border space-y-8 relative overflow-hidden ${
+                isFlikcam ? 'bg-white border-blue-100' : 'bg-white dark:bg-slate-900 border-slate-100 dark:border-slate-800'
+              }`}
             >
-              <h3 className="text-xl md:text-2xl font-black text-slate-800 dark:text-white leading-tight">
+              {/* Samurai Accent */}
+              <div className="absolute -bottom-6 -left-6 opacity-5 -rotate-12">
+                <YamatoIcon className="w-32 h-32 text-blue-600" />
+              </div>
+
+              <h3 className={`text-xl md:text-2xl font-black leading-tight relative z-10 ${
+                isFlikcam ? 'text-slate-900' : 'text-slate-800 dark:text-white'
+              }`}>
                 {questions[currentIndex].question}
               </h3>
 
-              <div className="grid grid-cols-1 gap-3">
+              <div className="grid grid-cols-1 gap-3 relative z-10">
                 {questions[currentIndex].options.map((opt: string, i: number) => {
-                  let btnClass = "bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300";
+                  let btnClass = isFlikcam 
+                    ? "bg-slate-50 border-slate-200 text-slate-700" 
+                    : "bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300";
+                  
                   if (showCorrection) {
                     if (i === questions[currentIndex].correctIndex) {
                       btnClass = "bg-green-50 dark:bg-green-900/20 border-green-500 text-green-700 dark:text-green-400";
@@ -240,7 +310,9 @@ function QuizView({
                       btnClass = "bg-red-50 dark:bg-red-900/20 border-red-500 text-red-700 dark:text-red-400";
                     }
                   } else if (selectedAnswer === i) {
-                    btnClass = "bg-indigo-50 dark:bg-indigo-900/20 border-indigo-500 text-indigo-700 dark:text-indigo-400";
+                    btnClass = isFlikcam 
+                      ? "bg-blue-50 border-blue-500 text-blue-700 shadow-md" 
+                      : "bg-blue-50 dark:bg-blue-900/20 border-blue-500 text-blue-700 dark:text-blue-400";
                   }
 
                   return (
@@ -274,18 +346,24 @@ function QuizView({
                 <motion.div 
                   initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}
-                  className="p-6 bg-indigo-50 dark:bg-indigo-900/20 rounded-2xl border border-indigo-100 dark:border-indigo-800 space-y-2"
+                  className={`p-6 rounded-2xl border space-y-2 relative z-10 ${
+                    isFlikcam ? 'bg-blue-50 border-blue-100' : 'bg-blue-50 dark:bg-blue-900/20 border-blue-100 dark:border-blue-800'
+                  }`}
                 >
-                  <div className="flex items-center gap-2 text-indigo-600 dark:text-indigo-400 font-black text-xs uppercase tracking-widest">
-                    <Bot className="w-4 h-4" />
+                  <div className={`flex items-center gap-2 font-black text-xs uppercase tracking-widest ${
+                    isFlikcam ? 'text-blue-600' : 'text-blue-600 dark:text-blue-400'
+                  }`}>
+                    <YamatoIcon className="w-4 h-4" />
                     Penjelasan
                   </div>
-                  <p className="text-slate-700 dark:text-slate-300 text-sm leading-relaxed font-medium">
+                  <p className={`text-sm leading-relaxed font-medium ${
+                    isFlikcam ? 'text-slate-700' : 'text-slate-700 dark:text-slate-300'
+                  }`}>
                     {questions[currentIndex].explanation}
                   </p>
                   <button 
                     onClick={nextQuestion}
-                    className="mt-4 w-full py-4 bg-indigo-600 text-white rounded-xl font-black uppercase tracking-widest text-xs shadow-lg shadow-indigo-200 dark:shadow-none"
+                    className="mt-4 w-full py-4 bg-blue-600 text-white rounded-xl font-black uppercase tracking-widest text-xs shadow-lg shadow-blue-200 dark:shadow-none"
                   >
                     {currentIndex === questions.length - 1 ? 'Lihat Hasil' : 'Pertanyaan Selanjutnya'}
                   </button>
@@ -299,29 +377,40 @@ function QuizView({
           <motion.div 
             initial={{ opacity: 0, scale: 0.9 }}
             animate={{ opacity: 1, scale: 1 }}
-            className="bg-white dark:bg-slate-900 p-10 rounded-[2.5rem] shadow-xl border border-slate-100 dark:border-slate-800 text-center space-y-8"
+            className={`p-10 rounded-[2.5rem] shadow-2xl border text-center space-y-8 relative overflow-hidden ${
+              isFlikcam ? 'bg-white border-blue-100' : 'bg-white dark:bg-slate-900 border-slate-100 dark:border-slate-800'
+            }`}
           >
-            <div className="w-24 h-24 bg-indigo-600 rounded-full flex items-center justify-center mx-auto shadow-2xl shadow-indigo-200 dark:shadow-none">
+            {/* Samurai Accent */}
+            <div className="absolute -top-6 -right-6 opacity-5 rotate-12">
+              <YamatoIcon className="w-32 h-32 text-blue-600" />
+            </div>
+
+            <div className="w-24 h-24 bg-blue-600 rounded-full flex items-center justify-center mx-auto shadow-2xl shadow-blue-200 dark:shadow-none relative z-10">
               <Check className="w-12 h-12 text-white" />
             </div>
-            <div className="space-y-2">
-              <h2 className="text-3xl font-black text-slate-800 dark:text-white">Kuis Selesai!</h2>
-              <p className="text-slate-500 dark:text-slate-400 font-medium">Kamu berhasil menyelesaikan kuis.</p>
+            <div className="space-y-2 relative z-10">
+              <h2 className={`text-3xl font-black uppercase tracking-tighter ${isFlikcam ? 'text-slate-900' : 'text-slate-800 dark:text-white'}`}>Kuis Selesai!</h2>
+              <p className={`font-medium italic ${isFlikcam ? 'text-blue-600' : 'text-slate-500 dark:text-slate-400'}`}>"You are not worthy as my opponent."</p>
             </div>
-            <div className="p-8 bg-slate-50 dark:bg-slate-800 rounded-3xl border border-slate-100 dark:border-slate-700">
-              <div className="text-5xl font-black text-indigo-600 dark:text-indigo-400">{score} / {questions.length}</div>
+            <div className={`p-8 rounded-3xl border relative z-10 ${
+              isFlikcam ? 'bg-blue-50 border-blue-100' : 'bg-blue-50 dark:bg-blue-900/20 border-blue-100 dark:border-blue-800'
+            }`}>
+              <div className="text-5xl font-black text-blue-600 dark:text-blue-400">{score} / {questions.length}</div>
               <div className="text-xs font-black text-slate-400 uppercase tracking-[0.2em] mt-2">Skor Kamu</div>
             </div>
-            <div className="flex flex-col gap-3">
+            <div className="flex flex-col gap-3 relative z-10">
               <button 
                 onClick={() => { setQuestions([]); setIsFinished(false); setQuizTopic(''); }}
-                className="w-full py-5 bg-indigo-600 text-white rounded-2xl font-black uppercase tracking-widest shadow-lg shadow-indigo-200 dark:shadow-none"
+                className="w-full py-5 bg-blue-600 text-white rounded-2xl font-black uppercase tracking-widest shadow-lg shadow-blue-200 dark:shadow-none transition-all hover:bg-blue-700"
               >
                 Coba Materi Lain
               </button>
               <button 
                 onClick={() => setView('chat')}
-                className="w-full py-5 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 rounded-2xl font-black uppercase tracking-widest"
+                className={`w-full py-5 rounded-2xl font-black uppercase tracking-widest transition-all border ${
+                  isFlikcam ? 'bg-white text-slate-600 border-slate-200 hover:bg-blue-50 hover:text-blue-600' : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-blue-50 dark:hover:bg-blue-900/20 hover:text-blue-600'
+                }`}
               >
                 Kembali ke Chat
               </button>
@@ -333,29 +422,6 @@ function QuizView({
   );
 }
 
-// Custom Yamato (Katana) Icon Component
-const YamatoIcon = ({ className }: { className?: string }) => (
-  <svg 
-    viewBox="0 0 24 24" 
-    fill="none" 
-    stroke="currentColor" 
-    strokeWidth="1.5" 
-    strokeLinecap="round" 
-    strokeLinejoin="round" 
-    className={className}
-  >
-    {/* Blade */}
-    <path d="M5 19L19 5" strokeWidth="2" />
-    {/* Blade Curve/Edge */}
-    <path d="M6 18L18 6" opacity="0.5" />
-    {/* Tsuba (Guard) */}
-    <path d="M4 16L8 20" strokeWidth="2.5" />
-    {/* Handle (Tsuka) */}
-    <path d="M2 22L5 19" strokeWidth="3" />
-    {/* Sheath Detail */}
-    <circle cx="3.5" cy="20.5" r="0.5" fill="currentColor" />
-  </svg>
-);
 
 export default function App() {
   const [messages, setMessages] = useState<Message[]>([]);
@@ -1229,12 +1295,16 @@ export default function App() {
   return (
     <div className={`flex flex-col h-screen font-sans transition-colors duration-500 overflow-hidden relative ${
       isFlikcam 
-        ? 'bg-slate-950 text-blue-100' 
-        : 'bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100'
+        ? 'bg-slate-50 text-slate-900' 
+        : 'bg-white dark:bg-slate-950 text-slate-900 dark:text-slate-100'
     }`}>
+      {/* Vergil Theme Background Elements (Global) */}
+      <VergilAura />
+
       {isFlikcam && (
         <div className="absolute inset-0 pointer-events-none z-0 overflow-hidden">
-          {/* Video Background */}
+          {/* Video Background with White Overlay */}
+          <div className="absolute inset-0 bg-white/60 z-10" />
           <video
             ref={videoRef}
             src="https://drive.google.com/uc?export=download&id=1fzEXPE4PijbLepGlDXf4svlPkmjhgU0S"
@@ -1242,19 +1312,19 @@ export default function App() {
             muted
             playsInline
             autoPlay
-            className="absolute inset-0 w-full h-full object-cover opacity-40 transition-opacity duration-1000"
+            className="absolute inset-0 w-full h-full object-cover opacity-30 transition-opacity duration-1000"
           />
           
-          {/* Neon Grid Pattern */}
-          <div className="absolute inset-0 opacity-[0.05]" style={{ backgroundImage: 'linear-gradient(45deg, #2563eb 1px, transparent 1px), linear-gradient(-45deg, #2563eb 1px, transparent 1px)', backgroundSize: '40px 40px' }} />
+          {/* Samurai Grid Pattern */}
+          <div className="absolute inset-0 opacity-[0.03] z-20" style={{ backgroundImage: 'linear-gradient(45deg, #2563eb 1px, transparent 1px), linear-gradient(-45deg, #2563eb 1px, transparent 1px)', backgroundSize: '60px 60px' }} />
           
-          {/* Blue Glows */}
-          <div className="absolute top-0 left-1/4 w-96 h-96 bg-blue-600/10 blur-[120px] rounded-full animate-pulse" />
-          <div className="absolute bottom-0 right-1/4 w-96 h-96 bg-blue-900/20 blur-[120px] rounded-full" />
+          {/* Blue/Silver Glows */}
+          <div className="absolute top-0 left-1/4 w-96 h-96 bg-blue-400/10 blur-[120px] rounded-full animate-pulse z-20" />
+          <div className="absolute bottom-0 right-1/4 w-96 h-96 bg-slate-300/20 blur-[120px] rounded-full z-20" />
           
-          {/* Sword Slash Effect (Decorative) */}
-          <div className="absolute top-1/2 left-0 w-full h-[1px] bg-gradient-to-r from-transparent via-blue-500 to-transparent opacity-20 rotate-[-15deg] transform -translate-y-1/2" />
-          <div className="absolute top-1/3 left-0 w-full h-[1px] bg-gradient-to-r from-transparent via-blue-400 to-transparent opacity-10 rotate-[10deg] transform -translate-y-1/2" />
+          {/* Sword Slash Effects */}
+          <SwordSlash className="top-1/4 left-0 w-full h-20 z-20" />
+          <SwordSlash className="top-3/4 left-0 w-full h-20 z-20" />
         </div>
       )}
       {/* PDF Extraction Loading Overlay */}
@@ -1392,47 +1462,47 @@ export default function App() {
       {/* Header */}
       <header className={`flex items-center justify-between px-4 sm:px-6 py-3 sm:py-4 border-b shadow-sm sticky top-0 z-30 transition-all duration-500 ${
         isFlikcam 
-          ? 'bg-slate-900/80 backdrop-blur-md border-blue-900/50 shadow-blue-900/20' 
-          : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800'
+          ? 'bg-white/90 backdrop-blur-md border-blue-100 shadow-[0_0_30px_rgba(37,99,235,0.05)]' 
+          : 'bg-white/80 dark:bg-slate-900/80 border-slate-200 dark:border-slate-800'
       }`}>
         <div className="flex items-center gap-2 sm:gap-3">
-          <div className={`p-1.5 sm:p-2 rounded-xl shadow-lg transition-all duration-500 ${
+          <div className={`p-1.5 sm:p-2 rounded-xl shadow-lg transition-all duration-500 transform hover:scale-110 ${
             isFlikcam 
-              ? 'bg-blue-900 shadow-blue-500/20' 
-              : 'bg-indigo-600 shadow-indigo-200 dark:shadow-none'
+              ? 'bg-white border border-blue-200 shadow-blue-100' 
+              : 'bg-blue-600 shadow-blue-200 dark:shadow-none'
           }`}>
-            {isFlikcam ? <YamatoIcon className="w-5 h-5 sm:w-6 sm:h-6 text-blue-400 animate-pulse" /> : <GraduationCap className="w-5 h-5 sm:w-6 sm:h-6 text-white" />}
+            {isFlikcam ? <YamatoIcon className="w-5 h-5 sm:w-6 sm:h-6 text-blue-600 animate-pulse" /> : <YamatoIcon className="w-5 h-5 sm:w-6 sm:h-6 text-white" />}
           </div>
           <div className="hidden xs:block">
-            <h1 className={`text-lg sm:text-xl font-black tracking-tighter uppercase transition-colors duration-500 ${
-              isFlikcam ? 'text-blue-100' : 'text-slate-800 dark:text-white'
+            <h1 className={`text-lg sm:text-xl font-black tracking-tighter uppercase transition-colors duration-500 flex items-center gap-2 ${
+              isFlikcam ? 'text-slate-900' : 'text-slate-900 dark:text-white'
             }`}>
-              {isFlikcam ? 'FLIKCAM' : 'AI R.G'}
+              AI R.G <span className="text-blue-600 dark:text-blue-400">Vergil</span>
             </h1>
             <div className="hidden sm:flex items-center gap-1.5">
-              <div className={`w-2 h-2 rounded-full animate-pulse ${isFlikcam ? 'bg-blue-400' : 'bg-green-500'}`} />
+              <div className={`w-2 h-2 rounded-full animate-pulse ${isFlikcam ? 'bg-blue-500' : 'bg-blue-500'}`} />
               <span className={`text-[10px] font-bold uppercase tracking-widest transition-colors duration-500 ${
-                isFlikcam ? 'text-blue-400' : 'text-slate-500 dark:text-slate-400'
+                isFlikcam ? 'text-blue-600' : 'text-slate-500 dark:text-slate-400'
               }`}>
-                {isFlikcam ? 'Vergil Mode Active' : 'Asisten Kelas Aktif'}
+                {isFlikcam ? 'Motivation Active' : 'Asisten Kelas Aktif'}
               </span>
             </div>
           </div>
         </div>
 
         <div className="flex items-center gap-2 sm:gap-4">
-          {/* Flikcam Toggle */}
+          {/* Vergil Mode Toggle */}
           <div className="flex items-center gap-1">
             <button
               onClick={() => setIsFlikcam(!isFlikcam)}
               className={`flex items-center gap-2 px-3 sm:px-4 py-2 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all ${
                 isFlikcam 
-                  ? 'bg-blue-600 text-white shadow-[0_0_15px_rgba(37,99,235,0.5)] border border-blue-400' 
+                  ? 'bg-blue-600 text-white shadow-[0_0_15px_rgba(37,99,235,0.3)] border border-blue-400' 
                   : 'bg-slate-100 dark:bg-slate-800 text-slate-500 hover:bg-blue-50 dark:hover:bg-blue-900/20 hover:text-blue-600'
               }`}
             >
               <Zap className={`w-3.5 h-3.5 ${isFlikcam ? 'animate-pulse' : ''}`} />
-              <span className="hidden sm:inline">FLIKCAM</span>
+              <span className="hidden sm:inline">{isFlikcam ? 'VERGIL ACTIVE' : 'VERGIL MODE'}</span>
             </button>
 
             {isFlikcam && (
@@ -1463,7 +1533,7 @@ export default function App() {
               onClick={() => setMode('chat')}
               className={`px-3 sm:px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all flex items-center gap-2 ${
                 mode === 'chat' 
-                  ? 'bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-400 shadow-sm' 
+                  ? (isFlikcam ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/50' : 'bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-400 shadow-sm') 
                   : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
               }`}
             >
@@ -1474,7 +1544,7 @@ export default function App() {
               onClick={() => setMode('study')}
               className={`px-3 sm:px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all flex items-center gap-2 ${
                 mode === 'study' 
-                  ? 'bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-400 shadow-sm' 
+                  ? (isFlikcam ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/50' : 'bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-400 shadow-sm') 
                   : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
               }`}
             >
@@ -1559,8 +1629,24 @@ export default function App() {
       {/* Chat Area */}
       {view === 'chat' ? (
         <main className={`flex-1 overflow-y-auto p-4 md:p-6 space-y-6 scroll-smooth relative ${
-          isFlikcam ? 'bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-slate-900 via-slate-950 to-black' : ''
+          isFlikcam ? 'bg-slate-50' : 'bg-white dark:bg-slate-950'
         }`}>
+          {/* Vergil Background Accents (Chat) */}
+          {isFlikcam && (
+            <div className="absolute inset-0 pointer-events-none overflow-hidden z-0">
+              <div className="absolute top-1/4 left-0 w-full h-[1px] bg-blue-200/50 rotate-[-15deg] opacity-50" />
+              <div className="absolute top-1/2 right-0 w-full h-[1px] bg-blue-200/50 rotate-[10deg] opacity-30" />
+              <SwordSlash className="top-1/3 left-0 w-full h-20" />
+            </div>
+          )}
+
+          {!isFlikcam && (
+            <div className="absolute inset-0 pointer-events-none overflow-hidden z-0">
+              <div className="absolute top-1/4 left-0 w-full h-[1px] bg-blue-100 dark:bg-blue-900/10 rotate-[-15deg] opacity-50" />
+              <div className="absolute top-1/2 right-0 w-full h-[1px] bg-blue-100 dark:bg-blue-900/10 rotate-[10deg] opacity-30" />
+            </div>
+          )}
+
           {isFlikcam && (
             <div className="absolute inset-0 pointer-events-none opacity-10 overflow-hidden">
               <div className="absolute top-0 left-0 w-full h-full bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')]" />
@@ -1572,37 +1658,42 @@ export default function App() {
               <motion.div 
                 initial={{ scale: 0.8, opacity: 0 }}
                 animate={{ scale: 1, opacity: 1 }}
-                className={`p-8 rounded-[2.5rem] relative ${
-                  isFlikcam ? 'bg-blue-900/20 border border-blue-500/30' : 'bg-indigo-50 dark:bg-indigo-900/20'
+                className={`p-8 rounded-[2.5rem] relative overflow-hidden ${
+                  isFlikcam ? 'bg-blue-900/20 border border-blue-500/30' : 'bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-900/30'
                 }`}
               >
+                {/* Samurai Accent */}
+                <div className="absolute -top-4 -right-4 opacity-5 rotate-12">
+                  <YamatoIcon className="w-24 h-24 text-blue-600" />
+                </div>
+
                 {isFlikcam ? (
                   <YamatoIcon className="w-20 h-20 text-blue-500 animate-pulse" />
                 ) : (
-                  <Bot className="w-20 h-20 text-indigo-600 dark:text-indigo-400" />
+                  <YamatoIcon className="w-20 h-20 text-blue-600 dark:text-blue-400" />
                 )}
-                <div className={`absolute -top-2 -right-2 p-2 rounded-full shadow-lg ${isFlikcam ? 'bg-blue-600 text-white' : 'bg-indigo-600 text-white'}`}>
+                <div className={`absolute -top-2 -right-2 p-2 rounded-full shadow-lg ${isFlikcam ? 'bg-blue-600 text-white' : 'bg-blue-600 text-white'}`}>
                   <Sparkles className="w-4 h-4" />
                 </div>
               </motion.div>
               <div className="space-y-3">
                 <h2 className={`text-3xl font-black tracking-tight uppercase ${isFlikcam ? 'text-blue-100' : 'text-slate-800 dark:text-white'}`}>
-                  {isFlikcam ? 'Show me your motivation' : 'Halo, Pelajar!'}
+                  {isFlikcam ? 'Show me your motivation' : 'Selamat Datang'}
                 </h2>
                 <p className={`font-medium ${isFlikcam ? 'text-blue-400' : 'text-slate-500 dark:text-slate-400'}`}>
-                  {isFlikcam ? 'Foolishness, Dante. Foolishness. Ask, if you have the power to sustain the answer.' : (
-                    <>Saya <span className="text-indigo-600 dark:text-indigo-400 font-bold">AI R.G</span>. Siap membantu belajarmu hari ini. Mau tanya PR apa?</>
+                  {isFlikcam ? 'Foolishness, Dante. Foolishness.' : (
+                    <>Saya <span className="text-blue-600 dark:text-blue-400 font-bold">AI R.G Vergil</span>. Siap membantu belajarmu hari ini.</>
                   )}
                 </p>
               </div>
               <div className="grid grid-cols-1 gap-3 w-full">
-                {(isFlikcam ? ['Where is the power?', 'Show me your motivation', 'Foolishness'] : ['Jelaskan teori gravitasi', 'Bantu PR Matematika', 'Cara buat esai yang bagus']).map((suggestion) => (
+                {(isFlikcam ? ['Where is the power?', 'Show me your motivation', 'I need more power!'] : ['Jelaskan teori gravitasi', 'Bantu PR Matematika', 'Cara buat esai yang bagus']).map((suggestion) => (
                   <button
                     key={suggestion}
                     onClick={() => { setInput(suggestion); }}
                     className={`p-4 text-sm font-semibold transition-all text-left shadow-sm rounded-2xl border ${
                       isFlikcam 
-                        ? 'text-blue-300 bg-blue-900/20 border-blue-800 hover:border-blue-500 hover:bg-blue-900/40' 
+                        ? 'text-blue-600 bg-white border-blue-200 hover:border-blue-500 hover:bg-blue-50' 
                         : 'text-slate-600 dark:text-slate-300 bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 hover:border-indigo-300 dark:hover:border-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-900/20'
                     }`}
                   >
@@ -1624,16 +1715,16 @@ export default function App() {
                 <div className={`flex gap-3 max-w-[92%] md:max-w-[80%] ${msg.role === 'user' ? 'flex-row-reverse' : 'flex-row'}`}>
                   <div className={`flex-shrink-0 w-9 h-9 rounded-2xl flex items-center justify-center shadow-md transition-all duration-500 ${
                     msg.role === 'user' 
-                      ? (isFlikcam ? 'bg-blue-600' : 'bg-indigo-600') 
-                      : (isFlikcam ? 'bg-slate-900 border border-blue-900/50' : 'bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700')
+                      ? 'bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700' 
+                      : (isFlikcam ? 'bg-white border border-blue-400 shadow-[0_0_15px_rgba(37,99,235,0.2)]' : 'bg-blue-600')
                   }`}>
-                    {msg.role === 'user' ? <User className="w-5 h-5 text-white" /> : (isFlikcam ? <YamatoIcon className="w-5 h-5 text-blue-400" /> : <Bot className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />)}
+                    {msg.role === 'user' ? <User className={`w-5 h-5 ${isFlikcam ? 'text-blue-600' : 'text-blue-600'}`} /> : (isFlikcam ? <YamatoIcon className="w-5 h-5 text-blue-600 animate-pulse" /> : <YamatoIcon className="w-5 h-5 text-white" />)}
                   </div>
                   <div className="group relative">
                     <div className={`p-5 shadow-sm transition-all duration-500 ${
                       msg.role === 'user' 
-                        ? (isFlikcam ? 'bg-blue-900/40 text-blue-50 border-2 border-blue-500/50 rounded-2xl rounded-tr-none shadow-[0_0_15px_rgba(37,99,235,0.2)]' : 'bg-indigo-600 text-white rounded-3xl rounded-tr-none')
-                        : (isFlikcam ? 'bg-slate-900/90 text-blue-100 border-2 border-blue-900/80 rounded-2xl rounded-tl-none backdrop-blur-md shadow-[0_0_20px_rgba(0,0,0,0.5)]' : 'bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 border border-slate-100 dark:border-slate-700 rounded-3xl rounded-tl-none')
+                        ? (isFlikcam ? 'bg-white text-slate-900 border-2 border-blue-100 rounded-2xl rounded-tr-none shadow-md' : 'bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 border border-slate-200 dark:border-slate-700 rounded-3xl rounded-tr-none')
+                        : (isFlikcam ? 'bg-blue-50/90 text-slate-900 border-2 border-blue-400/30 rounded-2xl rounded-tl-none backdrop-blur-md shadow-lg' : 'bg-blue-600 text-white rounded-3xl rounded-tl-none')
                     }`}>
                       {msg.role === 'model' && msg.groundingChunks && msg.groundingChunks.some(c => c.maps) && (
                         <div className="flex flex-col gap-1 mb-3">
@@ -1782,6 +1873,7 @@ export default function App() {
           handleFileUpload={handleFileUpload}
           setError={setError}
           setView={setView}
+          isFlikcam={isFlikcam}
         />
       )}
 
@@ -1968,7 +2060,7 @@ export default function App() {
                     }}
                     className={`whitespace-nowrap px-4 py-1.5 text-xs font-bold transition-all border ${
                       isFlikcam 
-                        ? 'bg-blue-950/50 border-blue-500/30 text-blue-400 hover:bg-blue-600 hover:text-white hover:border-blue-400 rounded-none skew-x-[-12deg] shadow-[0_0_10px_rgba(37,99,235,0.2)]' 
+                        ? 'bg-white border-blue-200 text-blue-600 hover:bg-blue-600 hover:text-white hover:border-blue-400 rounded-none skew-x-[-12deg] shadow-sm' 
                         : 'bg-slate-100 dark:bg-slate-800 border-transparent hover:border-indigo-200 dark:hover:border-indigo-800 text-slate-600 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 rounded-full'
                     }`}
                   >
@@ -1978,27 +2070,23 @@ export default function App() {
               </motion.div>
             )}
 
-            <div className="flex flex-row gap-2 items-end">
+            <div className="flex items-end gap-2 sm:gap-3">
               <button
                 onClick={() => setIsMenuOpen(!isMenuOpen)}
-                className={`flex-shrink-0 w-11 h-11 transition-all shadow-md flex items-center justify-center ${
+                className={`p-3.5 sm:p-4 transition-all shadow-lg flex items-center justify-center flex-shrink-0 ${
                   isMenuOpen 
                     ? (isFlikcam ? 'bg-blue-600 text-white rotate-45 shadow-blue-500/50 rounded-none' : 'bg-slate-800 dark:bg-white text-white dark:text-slate-900 rotate-45 rounded-2xl')
-                    : (isFlikcam ? 'bg-blue-900/40 text-blue-100 hover:bg-blue-800 shadow-blue-900/40 border border-blue-500/30 rounded-none skew-x-[-12deg]' : 'bg-indigo-600 text-white hover:bg-indigo-700 rounded-2xl')
+                    : (isFlikcam ? 'bg-white text-blue-600 hover:bg-blue-50 shadow-blue-100 border border-blue-200 rounded-none skew-x-[-12deg]' : 'bg-indigo-600 text-white hover:bg-indigo-700 rounded-2xl')
                 }`}
               >
-                <Plus className={`w-5 h-5 ${isFlikcam ? 'skew-x-[12deg]' : ''}`} />
+                <Plus className={`w-5 h-5 sm:w-6 sm:h-6 ${isFlikcam ? 'skew-x-[12deg]' : ''}`} />
               </button>
 
-              <div className="flex-1 min-w-0 flex items-end gap-2 border rounded-2xl px-3 py-2 shadow-sm transition-all focus-within:ring-2 focus-within:ring-indigo-500/20 focus-within:border-indigo-400 dark:focus-within:border-indigo-500 bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700">
+              <div className="flex-1 relative">
                 <textarea
                   rows={1}
                   value={input}
-                  onChange={(e) => {
-                    setInput(e.target.value);
-                    e.target.style.height = 'auto';
-                    e.target.style.height = Math.min(e.target.scrollHeight, 120) + 'px';
-                  }}
+                  onChange={(e) => setInput(e.target.value)}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' && !e.shiftKey) {
                       e.preventDefault();
@@ -2006,30 +2094,30 @@ export default function App() {
                     }
                   }}
                   placeholder={isFlikcam ? "Show me your motivation..." : "Tanyakan PR atau materi pelajaran..."}
-                  className={`flex-1 min-w-0 bg-transparent border-none outline-none resize-none text-sm font-medium leading-relaxed max-h-28 py-1 ${
+                  className={`w-full p-4 pr-14 border focus:outline-none focus:ring-4 transition-all resize-none max-h-32 shadow-inner font-medium ${
                     isFlikcam 
-                      ? 'text-blue-100 placeholder-blue-900/60' 
-                      : 'text-slate-800 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500'
+                      ? 'bg-white border-blue-300 text-slate-900 focus:ring-blue-500/10 focus:border-blue-500 placeholder-blue-200 rounded-none shadow-sm' 
+                      : 'bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 focus:ring-indigo-500/10 focus:border-indigo-500 dark:focus:border-indigo-400 placeholder-slate-400 dark:placeholder-slate-500 rounded-2xl'
                   }`}
                 />
                 <button
                   onClick={() => handleSend()}
                   disabled={!input.trim() || isLoading}
-                  className={`flex-shrink-0 w-9 h-9 flex items-center justify-center transition-all rounded-xl ${
+                  className={`absolute right-2 bottom-2 p-2.5 transition-all ${
                     !input.trim() || isLoading 
-                      ? (isFlikcam ? 'text-blue-900 bg-slate-900 rounded-none' : 'text-slate-300 dark:text-slate-600 bg-slate-100 dark:bg-slate-700')
-                      : (isFlikcam ? 'text-white bg-blue-600 hover:bg-blue-700 shadow-[0_0_15px_rgba(37,99,235,0.5)] rounded-none' : 'text-white bg-indigo-600 hover:bg-indigo-700 shadow-md active:scale-95')
+                      ? (isFlikcam ? 'text-blue-200 bg-slate-50 rounded-none' : 'text-slate-300 dark:text-slate-600 bg-slate-100 dark:bg-slate-700 rounded-xl')
+                      : (isFlikcam ? 'text-white bg-blue-600 hover:bg-blue-700 shadow-blue-200 rounded-none' : 'text-white bg-indigo-600 hover:bg-indigo-700 shadow-lg shadow-indigo-100 dark:shadow-none active:scale-95 rounded-xl')
                   }`}
                 >
-                  <Send className="w-4 h-4" />
+                  <Send className="w-5 h-5" />
                 </button>
               </div>
             </div>
           </div>
           <p className={`text-[10px] text-center mt-3 font-bold uppercase tracking-widest transition-colors duration-500 ${
-            isFlikcam ? 'text-blue-900' : 'text-slate-400 dark:text-slate-500'
+            isFlikcam ? 'text-blue-400' : 'text-slate-400 dark:text-slate-500'
           }`}>
-            {isFlikcam ? 'FLIKCAM • POWER SHALL BE ABSOLUTE' : 'AI R.G • Sahabat Belajar Siswa Masa Depan'}
+            {isFlikcam ? 'VERGIL MODE • POWER SHALL BE ABSOLUTE' : 'AI R.G • Sahabat Belajar Siswa Masa Depan'}
           </p>
         </footer>
       )}
