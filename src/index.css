@@ -1,8 +1,8 @@
 @import "tailwindcss";
 
 @layer base {
-  /* Memastikan konten tidak terpotong notch HP dan scrolling lebih smooth */
   html, body {
+    /* Mencegah halaman bergeser ke samping di HP */
     @apply antialiased overflow-x-hidden;
     touch-action: manipulation;
   }
@@ -15,5 +15,16 @@
   .no-scrollbar {
     -ms-overflow-style: none;
     scrollbar-width: none;
+  }
+
+  /* Tambahkan class khusus untuk area input yang berantakan itu */
+  .mobile-input-container {
+    @apply fixed bottom-0 left-0 w-full p-4 bg-inherit flex flex-col gap-3;
+    /* Memberikan jarak aman agar tidak menempel ke pinggir layar */
+  }
+
+  .mobile-action-buttons {
+    @apply flex overflow-x-auto gap-2 no-scrollbar pb-2;
+    /* Supaya tombol "Cari di Internet" dkk bisa di-scroll ke samping kalau sempit */
   }
 }
