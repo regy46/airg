@@ -1,5 +1,13 @@
 @import "tailwindcss";
 
+@layer base {
+  /* Memastikan konten tidak terpotong notch HP dan scrolling lebih smooth */
+  html, body {
+    @apply antialiased overflow-x-hidden;
+    touch-action: manipulation;
+  }
+}
+
 @layer utilities {
   .no-scrollbar::-webkit-scrollbar {
     display: none;
